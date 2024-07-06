@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use structured_instructions::{
+use substreams_solana_structured_instructions::{
     get_structured_instructions, StructuredInstruction, StructuredInstructions
 };
 

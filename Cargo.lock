@@ -588,7 +588,7 @@ dependencies = [
 [[package]]
 name = "substreams-solana-structured-instructions"
 version = "0.1.0"
-source = "git+https://github.com/0xpapercut/substreams-solana-structured-instructions?branch=main#6e3f7c2d29bbae90274ce2d6d01ded90c6cfb2d5"
+source = "git+https://github.com/0xpapercut/substreams-solana-structured-instructions?branch=main#620ae0302572c20d2c77ea1c04a40c40c52722fb"
 dependencies = [
  "substreams",
  "substreams-solana",
