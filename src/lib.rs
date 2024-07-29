@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{borrow::Borrow, collections::HashMap};
 
 mod instruction;
 pub use instruction::{
@@ -46,8 +46,8 @@ impl<'a> TransactionContext<'a> {
         }
 
         let instructions = get_structured_instructions(transaction);
-        for instruction in instructions.flattened() {
-            context.update(instruction);
+        for instruction in instructions.borrow().flattened() {
+            context.update(instruction.borrow());
         }
 
         context
