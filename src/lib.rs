@@ -1,5 +1,7 @@
 use std::collections::HashMap;
-use substreams_solana_structured_instructions::{
+
+mod instruction;
+pub use instruction::{
     get_structured_instructions, StructuredInstruction, StructuredInstructions
 };
 
@@ -52,17 +54,17 @@ impl<'a> TransactionContext<'a> {
     }
 
     fn update(&mut self, instruction: &StructuredInstruction) {
-        let program = bs58::encode(self.accounts[instruction.program_id_index as usize]).into_string();
+        let program = bs58::encode(self.accounts[instruction.program_id_index() as usize]).into_string();
         if program != spl_token::TOKEN_PROGRAM {
             return;
         }
-        match spl_token::TokenInstruction::unpack(&instruction.data).unwrap() {
-            spl_token::TokenInstruction::InitializeAccount => {
+        match spl_token::TokenInstruction::unpack(&instruction.data()) {
+            Ok(spl_token::TokenInstruction::InitializeAccount) => {
                 let token_account = parse_token_account(&instruction, self, None);
                 self.token_accounts.insert(token_account.address.clone(), token_account);
             }
-            spl_token::TokenInstruction::InitializeAccount2 { owner } |
-            spl_token::TokenInstruction::InitializeAccount3 { owner } => {
+            Ok(spl_token::TokenInstruction::InitializeAccount2 { owner }) |
+            Ok(spl_token::TokenInstruction::InitializeAccount3 { owner }) => {
                 let token_account = parse_token_account(&instruction, self, Some(owner));
                 self.token_accounts.insert(token_account.address.clone(), token_account);
             }
@@ -85,11 +87,11 @@ impl<'a> TransactionContext<'a> {
 
 /// Parses the Initialize SPL Token Instruction and returns a TokenAccount
 fn parse_token_account(instruction: &StructuredInstruction, context: &TransactionContext, owner: Option<Pubkey>) -> TokenAccount {
-    let address = context.get_account_from_index(instruction.accounts[0] as usize).clone();
-    let mint = context.get_account_from_index(instruction.accounts[1] as usize).clone();
+    let address = context.get_account_from_index(instruction.accounts()[0] as usize).clone();
+    let mint = context.get_account_from_index(instruction.accounts()[1] as usize).clone();
     let owner = match owner {
         Some(pubkey) => pubkey.to_bytes().to_vec(),
-        None => context.get_account_from_index(instruction.accounts[2] as usize).clone(),
+        None => context.get_account_from_index(instruction.accounts()[2] as usize).clone(),
     };
     TokenAccount {
         address,

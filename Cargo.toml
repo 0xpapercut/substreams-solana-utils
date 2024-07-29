@@ -9,6 +9,5 @@ name = "substreams_solana_utils"
 [dependencies]
 substreams-solana = { git = "https://github.com/streamingfast/substreams-solana", branch = "master" }
 substreams-solana-spl-token = { git = "https://github.com/0xpapercut/substreams-solana-spl-token", branch = "main" }
-substreams-solana-structured-instructions = { git = "https://github.com/0xpapercut/substreams-solana-structured-instructions", branch = "main" }
 substreams-solana-program-instructions = "0.1.1"
 bs58 = "0.5.0"
