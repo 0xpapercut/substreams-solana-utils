@@ -11,6 +11,8 @@ use substreams_solana_program_instructions::pubkey::Pubkey;
 mod token;
 pub use token::TokenAccount;
 
+mod log;
+
 use substreams_solana_spl_token as spl_token;
 
 /// Context that can provide enough information to process an instruction

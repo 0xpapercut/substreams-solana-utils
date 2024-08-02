@@ -1,7 +1,12 @@
+use std::borrow::BorrowMut;
 use std::cell::RefCell;
+use std::iter::Peekable;
 use std::rc::{Rc, Weak};
 
+use substreams::log::{info, println};
 use substreams_solana::pb::sf::solana::r#type::v1 as pb;
+
+use crate::log::Log;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum WrappedInstruction<'a> {
@@ -52,7 +57,7 @@ impl<'a> From<&'a pb::InnerInstruction> for WrappedInstruction<'a> {
 pub struct StructuredInstruction<'a> {
     instruction: WrappedInstruction<'a>,
     pub inner_instructions: RefCell<Vec<Rc<Self>>>,
-    pub logs: Vec<&'a String>,
+    pub logs: RefCell<Vec<Log>>,
     pub parent_instruction: RefCell<Option<Weak<Self>>>,
 }
 
@@ -61,7 +66,7 @@ impl<'a> StructuredInstruction<'a> {
         Self {
             instruction,
             inner_instructions: inner_instructions,
-            logs: Vec::new(),
+            logs: RefCell::new(Vec::new()),
             parent_instruction: RefCell::new(None),
         }
     }
@@ -71,36 +76,66 @@ impl<'a> StructuredInstruction<'a> {
     pub fn stack_height(&self) -> Option<u32> { self.instruction.stack_height() }
 }
 
-pub(crate) fn structure_wrapped_instructions_with_logs<'a>(instructions: Vec<WrappedInstruction<'a>>, logs: &[String]) -> RefCell<Vec<Rc<StructuredInstruction<'a>>>> {
-    let mut structured_instructions: Vec<StructuredInstruction> = Vec::new();
-
-    if instructions.len() == 0 {
-        return RefCell::new(Vec::new());
-    }
-
-    let stack_height = instructions[0].stack_height();
+fn take_until_success_or_next_invoke_log<I>(logs: &mut Peekable<I>) -> Vec<Log>
+where
+    I: Iterator<Item = Log>
+{
+    let mut taken_logs = Vec::new();
     let mut i = 0;
-    for (j, instr) in instructions.iter().enumerate() {
-        if j == i {
-            continue;
+    while let Some(log) = logs.peek() {
+        if log.is_invoke() && i > 0 {
+            break;
         }
-        if instr.stack_height() == stack_height {
-            let inner_instructions = structure_wrapped_instructions_with_logs(instructions[i + 1..j].to_vec(), logs);
-            structured_instructions.push(StructuredInstruction::new(instructions[i], inner_instructions));
-            i = j;
+        if let Some(log) = logs.next() {
+            let log_is_success = log.is_success();
+            taken_logs.push(log);
+            if log_is_success {
+                break;
+            }
+        }
+        i += 1;
+    }
+    taken_logs
+}
+
+pub fn structure_flattened_instructions_with_logs<'a>(flattened_instructions: Vec<WrappedInstruction<'a>>, logs: Peekable<impl Iterator<Item = Log>>) -> RefCell<Vec<Rc<StructuredInstruction<'a>>>> {
+    let mut structured_instructions: Vec<Rc<StructuredInstruction>> = Vec::new();
+    let mut instruction_stack: Vec<Rc<StructuredInstruction>> = Vec::new();
+    let mut logs_iter = logs.into_iter().peekable();
+
+    let mut i = 0;
+
+    for instruction in flattened_instructions {
+        let structured_instruction = StructuredInstruction::new(instruction, Vec::new().into());
+        structured_instruction.logs.borrow_mut().extend(take_until_success_or_next_invoke_log(&mut logs_iter));
+
+        while !instruction_stack.is_empty() && structured_instruction.stack_height() <= instruction_stack.last().unwrap().stack_height() {
+            let popped_instruction = instruction_stack.pop().unwrap();
+            if let Some(last_instruction) = instruction_stack.last() {
+                *popped_instruction.parent_instruction.borrow_mut() = Some(Rc::downgrade(last_instruction));
+                last_instruction.inner_instructions.borrow_mut().push(popped_instruction);
+                last_instruction.logs.borrow_mut().extend(take_until_success_or_next_invoke_log(&mut logs_iter));
+            } else {
+                structured_instructions.push(popped_instruction);
+            }
+            i += 1;
+            println(format!("{}", i));
+        }
+        instruction_stack.push(Rc::new(structured_instruction));
+    }
+
+    while !instruction_stack.is_empty() {
+        let popped_instruction = instruction_stack.pop().unwrap();
+        if let Some(last_instruction) = instruction_stack.last() {
+            *popped_instruction.parent_instruction.borrow_mut() = Some(Rc::downgrade(last_instruction));
+            last_instruction.inner_instructions.borrow_mut().push(popped_instruction);
+            last_instruction.logs.borrow_mut().extend(take_until_success_or_next_invoke_log(&mut logs_iter));
+        } else {
+            structured_instructions.push(popped_instruction);
         }
     }
-    let inner_instructions = structure_wrapped_instructions_with_logs(instructions[i + 1..].to_vec(), logs);
-    structured_instructions.push(StructuredInstruction::new(instructions[i], inner_instructions));
-    let structured_instructions: RefCell<Vec<Rc<StructuredInstruction<'a>>>> = RefCell::new(structured_instructions.into_iter().map(Rc::new).collect());
 
-    for parent_instruction in structured_instructions.borrow().iter() {
-        for inner_instruction in parent_instruction.inner_instructions.borrow_mut().iter_mut() {
-            *inner_instruction.parent_instruction.borrow_mut() = Some(Rc::downgrade(parent_instruction));
-        }
-    }
-
-    structured_instructions
+    RefCell::new(structured_instructions)
 }
 
 pub trait StructuredInstructions<'a> {
@@ -118,7 +153,7 @@ impl<'a> StructuredInstructions<'a> for Vec<Rc<StructuredInstruction<'a>>> {
     }
 }
 
-fn get_wrapped_instructions(confirmed_transaction: &pb::ConfirmedTransaction) -> Vec<WrappedInstruction> {
+fn get_flattened_instructions(confirmed_transaction: &pb::ConfirmedTransaction) -> Vec<WrappedInstruction> {
     let compiled_instructions = confirmed_transaction.transaction.as_ref().map(|x| x.message.as_ref().map(|y| &y.instructions)).unwrap().unwrap();
     let inner_instructions = confirmed_transaction.meta.as_ref().map(|x| &x.inner_instructions).unwrap();
 
@@ -137,7 +172,7 @@ fn get_wrapped_instructions(confirmed_transaction: &pb::ConfirmedTransaction) ->
 }
 
 pub fn get_structured_instructions<'a>(transaction: &'a pb::ConfirmedTransaction) -> RefCell<Vec<Rc<StructuredInstruction<'a>>>> {
-    let wrapped_instructions = get_wrapped_instructions(transaction);
-    let logs = transaction.meta.as_ref().unwrap().log_messages.as_ref();
-    structure_wrapped_instructions_with_logs(wrapped_instructions, logs)
+    let flattened_instructions: Vec<WrappedInstruction> = get_flattened_instructions(transaction);
+    let logs: &Vec<_> = transaction.meta.as_ref().unwrap().log_messages.as_ref();
+    structure_flattened_instructions_with_logs(flattened_instructions, logs.iter().map(|log| Log::parse_log(log)).peekable())
 }

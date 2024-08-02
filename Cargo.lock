@@ -24,6 +24,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c4b4d0bd25bd0b74681c0ad21497610ce1b7c91b1022cd21c80c6fbdd9476b0"
 
 [[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
 name = "bigdecimal"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -589,7 +595,10 @@ dependencies = [
 name = "substreams-solana-utils"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "bs58 0.5.1",
+ "regex",
+ "substreams",
  "substreams-solana",
  "substreams-solana-program-instructions",
  "substreams-solana-spl-token",

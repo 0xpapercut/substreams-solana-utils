@@ -33,7 +33,7 @@ pub fn build_structured_logs(logs: &Vec<&String>) -> Vec<ProgramStructuredLogs> 
             }
         }
     }
-    unimplemented!()
+    structured_logs
 }
 
 pub struct ProgramStructuredLogs {
@@ -46,7 +46,7 @@ pub struct ProgramStructuredLogs {
 }
 
 impl ProgramStructuredLogs {
-    fn new(program_id: String) -> Self {
+    pub fn new(program_id: String) -> Self {
         Self {
             program_id,
             data: None,
@@ -56,8 +56,27 @@ impl ProgramStructuredLogs {
             inner_logs: Vec::new(),
         }
     }
+
+    pub fn update(&mut self, log: Log) {
+        match log {
+            Log::Data(data) => {
+                self.data = Some(data.data);
+            },
+            Log::Return(return_) => {
+                self.return_data = Some(return_.data);
+            },
+            Log::Program(program) => {
+                self.program_logs.push(program);
+            },
+            Log::Unknown(unknown) => {
+                self.unknown_logs.push(unknown)
+            },
+            _ => unimplemented!()
+        }
+    }
 }
 
+#[derive(Debug)]
 pub enum Log {
     Invoke(InvokeLog), // "Program {} invoke [{}]",
     Success(SuccessLog), // Program {} success
@@ -86,8 +105,32 @@ impl Log {
         }
         Self::Unknown(UnknownLog { log: log.clone() })
     }
+
+    pub fn is_success(&self) -> bool {
+        matches!(self, Self::Success(_))
+    }
+    pub fn is_invoke(&self) -> bool {
+        matches!(self, Self::Invoke(_))
+    }
+
+    pub fn is_return(&self) -> bool {
+        matches!(self, Self::Return(_))
+    }
+
+    pub fn is_data(&self) -> bool {
+        matches!(self, Self::Data(_))
+    }
+
+    pub fn is_program(&self) -> bool {
+        matches!(self, Self::Program(_))
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown(_))
+    }
 }
 
+#[derive(Debug)]
 pub struct ProgramLog {
     pub message: String,
 }
@@ -104,6 +147,7 @@ impl ProgramLog {
     }
 }
 
+#[derive(Debug)]
 pub struct InvokeLog {
     pub program_id: String,
     pub invoke_depth: u32,
@@ -122,6 +166,7 @@ impl InvokeLog {
     }
 }
 
+#[derive(Debug)]
 pub struct SuccessLog {
     pub program_id: String,
 }
@@ -138,6 +183,7 @@ impl SuccessLog {
     }
 }
 
+#[derive(Debug)]
 pub struct ReturnLog {
     program_id: String,
     data: Vec<u8>,
@@ -159,6 +205,7 @@ impl ReturnLog {
     }
 }
 
+#[derive(Debug)]
 pub struct DataLog {
     pub data: Vec<u8>,
 }
@@ -177,6 +224,7 @@ impl DataLog {
     }
 }
 
+#[derive(Debug)]
 pub struct UnknownLog {
     log: String,
 }
