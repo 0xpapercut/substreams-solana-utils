@@ -1,8 +1,11 @@
-use std::{borrow::Borrow, collections::HashMap};
+use std::collections::HashMap;
 
 mod instruction;
+use instruction::WrappedInstruction;
 pub use instruction::{
-    get_structured_instructions, StructuredInstruction, StructuredInstructions
+    get_structured_instructions,
+    get_flattened_instructions,
+    StructuredInstruction,
 };
 
 use substreams_solana::pb::sf::solana::r#type::v1::ConfirmedTransaction;
@@ -47,27 +50,27 @@ impl<'a> TransactionContext<'a> {
             });
         }
 
-        let instructions = get_structured_instructions(transaction);
-        for instruction in instructions.borrow().flattened() {
-            context.update(instruction.borrow());
+        let instructions = get_flattened_instructions(transaction);
+        for instruction in instructions {
+            context.update(&instruction);
         }
 
         context
     }
 
-    fn update(&mut self, instruction: &StructuredInstruction) {
+    fn update(&mut self, instruction: &WrappedInstruction) {
         let program = bs58::encode(self.accounts[instruction.program_id_index() as usize]).into_string();
         if program != spl_token::TOKEN_PROGRAM {
             return;
         }
         match spl_token::TokenInstruction::unpack(&instruction.data()) {
             Ok(spl_token::TokenInstruction::InitializeAccount) => {
-                let token_account = parse_token_account(&instruction, self, None);
+                let token_account = parse_token_account(instruction, self, None);
                 self.token_accounts.insert(token_account.address.clone(), token_account);
             }
             Ok(spl_token::TokenInstruction::InitializeAccount2 { owner }) |
             Ok(spl_token::TokenInstruction::InitializeAccount3 { owner }) => {
-                let token_account = parse_token_account(&instruction, self, Some(owner));
+                let token_account = parse_token_account(instruction, self, Some(owner));
                 self.token_accounts.insert(token_account.address.clone(), token_account);
             }
             _ => ()
@@ -88,7 +91,7 @@ impl<'a> TransactionContext<'a> {
 }
 
 /// Parses the Initialize SPL Token Instruction and returns a TokenAccount
-fn parse_token_account(instruction: &StructuredInstruction, context: &TransactionContext, owner: Option<Pubkey>) -> TokenAccount {
+fn parse_token_account(instruction: &WrappedInstruction, context: &TransactionContext, owner: Option<Pubkey>) -> TokenAccount {
     let address = context.get_account_from_index(instruction.accounts()[0] as usize).clone();
     let mint = context.get_account_from_index(instruction.accounts()[1] as usize).clone();
     let owner = match owner {
