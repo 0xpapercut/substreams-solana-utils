@@ -1,7 +1,7 @@
 use regex;
 use base64;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Log<'a> {
     Invoke(InvokeLog<'a>), // "Program {} invoke [{}]",
     Success(SuccessLog<'a>), // Program {} success
@@ -55,7 +55,7 @@ impl<'a> Log<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProgramLog<'a> {
     log: &'a String,
 }
@@ -75,7 +75,7 @@ impl<'a> ProgramLog<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InvokeLog<'a> {
     log: &'a String,
 }
@@ -105,7 +105,7 @@ impl<'a> InvokeLog<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SuccessLog<'a> {
     pub log: &'a String,
 }
@@ -125,7 +125,7 @@ impl<'a> SuccessLog<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ReturnLog<'a> {
     pub log: &'a String,
 }
@@ -155,7 +155,7 @@ impl<'a> ReturnLog<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DataLog<'a> {
     pub log: &'a String,
 }
@@ -175,7 +175,7 @@ impl<'a> DataLog<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnknownLog<'a> {
     pub log: &'a String,
 }

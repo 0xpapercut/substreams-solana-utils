@@ -47,7 +47,7 @@ impl<'a> From<&'a pb::InnerInstruction> for WrappedInstruction<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StructuredInstruction<'a> {
     instruction: WrappedInstruction<'a>,
     pub inner_instructions: Vec<Self>,
@@ -93,14 +93,11 @@ where
     let mut instruction_stack: Vec<StructuredInstruction> = Vec::new();
 
     for instruction in flattened_instructions {
-        let mut structured_instruction = StructuredInstruction::new(instruction, Vec::new().into());
-        structured_instruction.logs.extend(take_until_success_or_next_invoke_log(logs));
-
-        while !instruction_stack.is_empty() && structured_instruction.stack_height() <= instruction_stack.last().unwrap().stack_height() {
+        let structured_instruction = StructuredInstruction::new(instruction, Vec::new().into());
+        while !instruction_stack.is_empty() && instruction_stack.last().unwrap().stack_height() >= structured_instruction.stack_height() {
             let popped_instruction = instruction_stack.pop().unwrap();
-            if let Some(last_instruction) = instruction_stack.last_mut() {
-                last_instruction.inner_instructions.push(popped_instruction);
-                last_instruction.logs.extend(take_until_success_or_next_invoke_log(logs));
+            if !instruction_stack.is_empty() {
+                instruction_stack.last_mut().unwrap().inner_instructions.push(popped_instruction);
             } else {
                 structured_instructions.push(popped_instruction);
             }
@@ -110,9 +107,8 @@ where
 
     while !instruction_stack.is_empty() {
         let popped_instruction = instruction_stack.pop().unwrap();
-        if let Some(last_instruction) = instruction_stack.last_mut() {
-            last_instruction.inner_instructions.push(popped_instruction);
-            last_instruction.logs.extend(take_until_success_or_next_invoke_log(logs));
+        if !instruction_stack.is_empty() {
+            instruction_stack.last_mut().unwrap().inner_instructions.push(popped_instruction);
         } else {
             structured_instructions.push(popped_instruction);
         }
@@ -139,8 +135,11 @@ pub fn get_flattened_instructions(confirmed_transaction: &pb::ConfirmedTransacti
     wrapped_instructions
 }
 
-pub fn get_structured_instructions<'a>(transaction: &'a pb::ConfirmedTransaction) -> Vec<StructuredInstruction<'a>> {
+pub fn get_structured_instructions<'a>(transaction: &'a pb::ConfirmedTransaction) -> Result<Vec<StructuredInstruction<'a>>, String> {
+    if let Some(_) = transaction.meta.as_ref().unwrap().err {
+        return Err("Cannot structure instructions of a failed transaction.".to_string());
+    }
     let flattened_instructions: Vec<WrappedInstruction> = get_flattened_instructions(transaction);
     let logs: &Vec<_> = transaction.meta.as_ref().unwrap().log_messages.as_ref();
-    structure_flattened_instructions_with_logs(flattened_instructions, &mut logs.iter().map(|log| Log::new(log)))
+    Ok(structure_flattened_instructions_with_logs(flattened_instructions, &mut logs.iter().map(|log| Log::new(log))))
 }
