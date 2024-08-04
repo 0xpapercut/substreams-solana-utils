@@ -1,8 +1,9 @@
+use std::iter::Peekable;
 use substreams_solana::pb::sf::solana::r#type::v1 as pb;
 
 use crate::log::Log;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub enum WrappedInstruction<'a> {
     Compiled(&'a pb::CompiledInstruction),
     Inner(&'a pb::InnerInstruction),
@@ -47,7 +48,7 @@ impl<'a> From<&'a pb::InnerInstruction> for WrappedInstruction<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct StructuredInstruction<'a> {
     instruction: WrappedInstruction<'a>,
     pub inner_instructions: Vec<Self>,
@@ -68,49 +69,83 @@ impl<'a> StructuredInstruction<'a> {
     pub fn stack_height(&self) -> Option<u32> { self.instruction.stack_height() }
 }
 
-fn take_until_success_or_next_invoke_log<'a, I>(logs: &mut I) -> Vec<Log<'a>>
+fn take_until_success_or_invoke_log<'a, I>(logs: &mut Peekable<I>) -> Vec<Log<'a>>
 where
     I: Iterator<Item = Log<'a>>
 {
+    let mut taken_logs = Vec::new();
+    let first_log_was_invoke = logs.peek().map_or(false, |log| log.is_invoke());
     let mut i = 0;
-    let mut stop = false;
-    logs.take_while(|log| {
-        if stop || (i > 0 && log.is_invoke()) {
-            return false;
-        } else if log.is_success() {
-            stop = true
+    loop {
+        if let Some(log) = logs.peek() {
+            if (i > 0 && log.is_invoke()) || (first_log_was_invoke && log.is_success()) {
+                break;
+            }
+        } else {
+            break;
+        }
+        let log = logs.next().unwrap();
+        let log_is_success = log.is_success();
+        taken_logs.push(log);
+        if log_is_success {
+            break;
         }
         i += 1;
-        true
-    }).collect()
+    }
+    taken_logs
 }
 
-pub fn structure_flattened_instructions_with_logs<'a, I>(flattened_instructions: Vec<WrappedInstruction<'a>>, logs: &mut I) -> Vec<StructuredInstruction<'a>>
+fn take_expect_invoke_or_success<'a, I>(logs: &mut Peekable<I>) -> Vec<Log<'a>>
 where
     I: Iterator<Item = Log<'a>>
 {
-    let mut structured_instructions: Vec<StructuredInstruction> = Vec::new();
-    let mut instruction_stack: Vec<StructuredInstruction> = Vec::new();
+    let mut taken_logs = Vec::new();
+    loop {
+        if let Some(log) = logs.peek() {
+            if log.is_invoke() || log.is_success() {
+                break;
+            }
+        } else {
+            break;
+        }
+        let log = logs.next().unwrap();
+        taken_logs.push(log);
+    }
+    taken_logs
+}
+
+pub fn structure_flattened_instructions_with_logs<'a, I>(flattened_instructions: Vec<WrappedInstruction<'a>>, logs: &mut Peekable<I>) -> Vec<StructuredInstruction<'a>>
+where
+    I: Iterator<Item = Log<'a>>
+{
+    let mut structured_instructions: Vec<StructuredInstruction<'a>> = Vec::new();
+    let mut instruction_stack: Vec<StructuredInstruction<'a>> = Vec::new();
 
     for instruction in flattened_instructions {
-        let structured_instruction = StructuredInstruction::new(instruction, Vec::new().into());
+        let mut structured_instruction = StructuredInstruction::new(instruction, Vec::new().into());
+
         while !instruction_stack.is_empty() && instruction_stack.last().unwrap().stack_height() >= structured_instruction.stack_height() {
-            let popped_instruction = instruction_stack.pop().unwrap();
+            let mut popped_instruction = instruction_stack.pop().unwrap();
+            popped_instruction.logs.extend(take_until_success_or_invoke_log(logs));
             if !instruction_stack.is_empty() {
                 instruction_stack.last_mut().unwrap().inner_instructions.push(popped_instruction);
+                instruction_stack.last_mut().unwrap().logs.extend(take_expect_invoke_or_success(logs));
             } else {
                 structured_instructions.push(popped_instruction);
             }
         }
+        structured_instruction.logs.extend(take_until_success_or_invoke_log(logs));
         instruction_stack.push(structured_instruction);
     }
 
     while !instruction_stack.is_empty() {
-        let popped_instruction = instruction_stack.pop().unwrap();
+        let mut popped_instruction = instruction_stack.pop().unwrap();
+        popped_instruction.logs.extend(take_until_success_or_invoke_log(logs));
         if !instruction_stack.is_empty() {
             instruction_stack.last_mut().unwrap().inner_instructions.push(popped_instruction);
+            instruction_stack.last_mut().unwrap().logs.extend(take_expect_invoke_or_success(logs));
         } else {
-            structured_instructions.push(popped_instruction);
+            structured_instructions.push(popped_instruction)
         }
     }
 
@@ -141,5 +176,5 @@ pub fn get_structured_instructions<'a>(transaction: &'a pb::ConfirmedTransaction
     }
     let flattened_instructions: Vec<WrappedInstruction> = get_flattened_instructions(transaction);
     let logs: &Vec<_> = transaction.meta.as_ref().unwrap().log_messages.as_ref();
-    Ok(structure_flattened_instructions_with_logs(flattened_instructions, &mut logs.iter().map(|log| Log::new(log))))
+    Ok(structure_flattened_instructions_with_logs(flattened_instructions, &mut logs.iter().map(|log| Log::new(log)).peekable()))
 }
