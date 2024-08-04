@@ -178,3 +178,18 @@ pub fn get_structured_instructions<'a>(transaction: &'a pb::ConfirmedTransaction
     let logs: &Vec<_> = transaction.meta.as_ref().unwrap().log_messages.as_ref();
     Ok(structure_flattened_instructions_with_logs(flattened_instructions, &mut logs.iter().map(|log| Log::new(log)).peekable()))
 }
+
+pub trait StructuredInstructions {
+    fn flattened(&self) -> Vec<&StructuredInstruction>;
+}
+
+impl<'a> StructuredInstructions for Vec<StructuredInstruction<'a>> {
+    fn flattened(&self) -> Vec<&StructuredInstruction> {
+        let mut instructions: Vec<&StructuredInstruction> = Vec::new();
+        for instruction in self {
+            instructions.push(instruction);
+            instructions.extend(instruction.inner_instructions.flattened());
+        }
+        instructions
+    }
+}

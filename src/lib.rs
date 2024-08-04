@@ -6,6 +6,7 @@ pub use instruction::{
     get_structured_instructions,
     get_flattened_instructions,
     StructuredInstruction,
+    StructuredInstructions,
 };
 
 use substreams_solana::pb::sf::solana::r#type::v1::ConfirmedTransaction;
