@@ -1,3 +1,5 @@
+use std::rc::{Rc, Weak};
+use std::cell::{Ref, RefCell};
 use std::iter::Peekable;
 use substreams_solana::pb::sf::solana::r#type::v1 as pb;
 
@@ -51,22 +53,27 @@ impl<'a> From<&'a pb::InnerInstruction> for WrappedInstruction<'a> {
 #[derive(Debug)]
 pub struct StructuredInstruction<'a> {
     instruction: WrappedInstruction<'a>,
-    pub inner_instructions: Vec<Self>,
-    pub logs: Vec<Log<'a>>,
+    inner_instructions: RefCell<Vec<Rc<Self>>>,
+    parent_instruction: RefCell<Option<Weak<Self>>>,
+    logs: RefCell<Vec<Log<'a>>>,
 }
 
 impl<'a> StructuredInstruction<'a> {
-    fn new(instruction: WrappedInstruction<'a>, inner_instructions: Vec<Self>) -> Self {
+    fn new(instruction: WrappedInstruction<'a>, inner_instructions: RefCell<Vec<Rc<Self>>>) -> Self {
         Self {
             instruction,
             inner_instructions: inner_instructions,
-            logs: Vec::new(),
+            parent_instruction: RefCell::new(None),
+            logs: RefCell::new(Vec::new()),
         }
     }
     pub fn program_id_index(&self) -> u32 { self.instruction.program_id_index() }
     pub fn accounts(&self) -> &Vec<u8> { self.instruction.accounts() }
     pub fn data(&self) -> &Vec<u8> { self.instruction.data() }
     pub fn stack_height(&self) -> Option<u32> { self.instruction.stack_height() }
+    pub fn inner_instructions(&self) -> Ref<Vec<Rc<Self>>> { self.inner_instructions.borrow() }
+    pub fn parent_instruction(&self) -> Ref<Option<Weak<Self>>> { self.parent_instruction.borrow() }
+    pub fn logs(&self) -> Ref<Vec<Log<'a>>> { self.logs.borrow() }
 }
 
 fn take_until_success_or_invoke_log<'a, I>(logs: &mut Peekable<I>) -> Vec<Log<'a>>
@@ -114,36 +121,37 @@ where
     taken_logs
 }
 
-pub fn structure_flattened_instructions_with_logs<'a, I>(flattened_instructions: Vec<WrappedInstruction<'a>>, logs: &mut Peekable<I>) -> Vec<StructuredInstruction<'a>>
+pub fn structure_flattened_instructions_with_logs<'a, I>(flattened_instructions: Vec<WrappedInstruction<'a>>, logs: &mut Peekable<I>) -> Vec<Rc<StructuredInstruction<'a>>>
 where
     I: Iterator<Item = Log<'a>>
 {
-    let mut structured_instructions: Vec<StructuredInstruction<'a>> = Vec::new();
-    let mut instruction_stack: Vec<StructuredInstruction<'a>> = Vec::new();
+    let mut structured_instructions: Vec<Rc<StructuredInstruction<'a>>> = Vec::new();
+    let mut instruction_stack: Vec<Rc<StructuredInstruction<'a>>> = Vec::new();
 
     for instruction in flattened_instructions {
-        let mut structured_instruction = StructuredInstruction::new(instruction, Vec::new().into());
+        let structured_instruction = Rc::new(StructuredInstruction::new(instruction, Vec::new().into()));
 
         while !instruction_stack.is_empty() && instruction_stack.last().unwrap().stack_height() >= structured_instruction.stack_height() {
-            let mut popped_instruction = instruction_stack.pop().unwrap();
-            popped_instruction.logs.extend(take_until_success_or_invoke_log(logs));
+            let popped_instruction = instruction_stack.pop().unwrap();
+            popped_instruction.logs.borrow_mut().extend(take_until_success_or_invoke_log(logs));
             if !instruction_stack.is_empty() {
-                instruction_stack.last_mut().unwrap().inner_instructions.push(popped_instruction);
-                instruction_stack.last_mut().unwrap().logs.extend(take_expect_invoke_or_success(logs));
+                *popped_instruction.parent_instruction.borrow_mut() = Some(Rc::downgrade(instruction_stack.last().unwrap()));
+                instruction_stack.last_mut().unwrap().inner_instructions.borrow_mut().push(popped_instruction);
+                instruction_stack.last_mut().unwrap().logs.borrow_mut().extend(take_expect_invoke_or_success(logs));
             } else {
                 structured_instructions.push(popped_instruction);
             }
         }
-        structured_instruction.logs.extend(take_until_success_or_invoke_log(logs));
+        structured_instruction.logs.borrow_mut().extend(take_until_success_or_invoke_log(logs));
         instruction_stack.push(structured_instruction);
     }
 
     while !instruction_stack.is_empty() {
-        let mut popped_instruction = instruction_stack.pop().unwrap();
-        popped_instruction.logs.extend(take_until_success_or_invoke_log(logs));
+        let popped_instruction = instruction_stack.pop().unwrap();
+        popped_instruction.logs.borrow_mut().extend(take_until_success_or_invoke_log(logs));
         if !instruction_stack.is_empty() {
-            instruction_stack.last_mut().unwrap().inner_instructions.push(popped_instruction);
-            instruction_stack.last_mut().unwrap().logs.extend(take_expect_invoke_or_success(logs));
+            instruction_stack.last_mut().unwrap().inner_instructions.borrow_mut().push(popped_instruction);
+            instruction_stack.last_mut().unwrap().logs.borrow_mut().extend(take_expect_invoke_or_success(logs));
         } else {
             structured_instructions.push(popped_instruction)
         }
@@ -170,7 +178,7 @@ pub fn get_flattened_instructions(confirmed_transaction: &pb::ConfirmedTransacti
     wrapped_instructions
 }
 
-pub fn get_structured_instructions<'a>(transaction: &'a pb::ConfirmedTransaction) -> Result<Vec<StructuredInstruction<'a>>, String> {
+pub fn get_structured_instructions<'a>(transaction: &'a pb::ConfirmedTransaction) -> Result<Vec<Rc<StructuredInstruction<'a>>>, String> {
     if let Some(_) = transaction.meta.as_ref().unwrap().err {
         return Err("Cannot structure instructions of a failed transaction.".to_string());
     }
@@ -179,16 +187,16 @@ pub fn get_structured_instructions<'a>(transaction: &'a pb::ConfirmedTransaction
     Ok(structure_flattened_instructions_with_logs(flattened_instructions, &mut logs.iter().map(|log| Log::new(log)).peekable()))
 }
 
-pub trait StructuredInstructions {
-    fn flattened(&self) -> Vec<&StructuredInstruction>;
+pub trait StructuredInstructions<'a> {
+    fn flattened(&'a self) -> Vec<Rc<StructuredInstruction<'a>>>;
 }
 
-impl<'a> StructuredInstructions for Vec<StructuredInstruction<'a>> {
-    fn flattened(&self) -> Vec<&StructuredInstruction> {
-        let mut instructions: Vec<&StructuredInstruction> = Vec::new();
+impl<'a> StructuredInstructions<'a> for Vec<Rc<StructuredInstruction<'a>>> {
+    fn flattened(&self) -> Vec<Rc<StructuredInstruction<'a>>> {
+        let mut instructions: Vec<Rc<StructuredInstruction>> = Vec::new();
         for instruction in self {
-            instructions.push(instruction);
-            instructions.extend(instruction.inner_instructions.flattened());
+            instructions.push(Rc::clone(instruction));
+            instructions.extend(instruction.inner_instructions.borrow().iter().map(Rc::clone));
         }
         instructions
     }
