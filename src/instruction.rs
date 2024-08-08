@@ -72,8 +72,20 @@ impl<'a> StructuredInstruction<'a> {
     pub fn data(&self) -> &Vec<u8> { self.instruction.data() }
     pub fn stack_height(&self) -> Option<u32> { self.instruction.stack_height() }
     pub fn inner_instructions(&self) -> Ref<Vec<Rc<Self>>> { self.inner_instructions.borrow() }
-    pub fn parent_instruction(&self) -> Ref<Option<Weak<Self>>> { self.parent_instruction.borrow() }
+    pub fn parent_instruction(&self) -> Option<Rc<Self>> { self.parent_instruction.borrow().as_ref().map(|x| x.upgrade().unwrap()) }
     pub fn logs(&self) -> Ref<Vec<Log<'a>>> { self.logs.borrow() }
+
+    pub fn top_instruction(&self) -> Option<Rc<Self>> {
+        if let Some(instruction) = self.parent_instruction() {
+            let mut top_instruction = instruction;
+            while let Some(parent_instruction) = top_instruction.parent_instruction() {
+                top_instruction = parent_instruction;
+            }
+            Some(top_instruction)
+        } else {
+            None
+        }
+    }
 }
 
 fn take_until_success_or_invoke_log<'a, I>(logs: &mut Peekable<I>) -> Vec<Log<'a>>
