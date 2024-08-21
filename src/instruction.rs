@@ -4,6 +4,7 @@ use std::iter::Peekable;
 use substreams_solana::pb::sf::solana::r#type::v1 as pb;
 
 use crate::log::Log;
+use crate::pubkey::PubkeyRef;
 
 #[derive(Debug)]
 pub enum WrappedInstruction<'a> {
@@ -53,22 +54,29 @@ impl<'a> From<&'a pb::InnerInstruction> for WrappedInstruction<'a> {
 #[derive(Debug)]
 pub struct StructuredInstruction<'a> {
     instruction: WrappedInstruction<'a>,
+    accounts: Vec<PubkeyRef<'a>>,
+    program_id: PubkeyRef<'a>,
     inner_instructions: RefCell<Vec<Rc<Self>>>,
     parent_instruction: RefCell<Option<Weak<Self>>>,
     logs: RefCell<Vec<Log<'a>>>,
 }
 
 impl<'a> StructuredInstruction<'a> {
-    fn new(instruction: WrappedInstruction<'a>, inner_instructions: RefCell<Vec<Rc<Self>>>) -> Self {
+    fn new(instruction: WrappedInstruction<'a>, inner_instructions: RefCell<Vec<Rc<Self>>>, accounts: &Vec<&'a Vec<u8>>) -> Self {
+        let instruction_accounts: Vec<_> = instruction.accounts().iter().map(|i| PubkeyRef(accounts[*i as usize])).collect();
+        let program_id = PubkeyRef(accounts[instruction.program_id_index() as usize]);
         Self {
             instruction,
+            program_id,
+            accounts: instruction_accounts,
             inner_instructions: inner_instructions,
             parent_instruction: RefCell::new(None),
             logs: RefCell::new(Vec::new()),
         }
     }
+    pub fn program_id(&'a self) -> &PubkeyRef<'a> { &self.program_id }
     pub fn program_id_index(&self) -> u32 { self.instruction.program_id_index() }
-    pub fn accounts(&self) -> &Vec<u8> { self.instruction.accounts() }
+    pub fn accounts(&self) -> &Vec<PubkeyRef> { &self.accounts }
     pub fn data(&self) -> &Vec<u8> { self.instruction.data() }
     pub fn stack_height(&self) -> Option<u32> { self.instruction.stack_height() }
     pub fn inner_instructions(&self) -> Ref<Vec<Rc<Self>>> { self.inner_instructions.borrow() }
@@ -133,7 +141,11 @@ where
     taken_logs
 }
 
-pub fn structure_flattened_instructions_with_logs<'a, I>(flattened_instructions: Vec<WrappedInstruction<'a>>, logs: &mut Peekable<I>) -> Vec<Rc<StructuredInstruction<'a>>>
+pub fn structure_flattened_instructions_with_logs<'a, I>(
+    flattened_instructions: Vec<WrappedInstruction<'a>>,
+    logs: &mut Peekable<I>,
+    accounts: Vec<&'a Vec<u8>>,
+) -> Vec<Rc<StructuredInstruction<'a>>>
 where
     I: Iterator<Item = Log<'a>>
 {
@@ -141,7 +153,7 @@ where
     let mut instruction_stack: Vec<Rc<StructuredInstruction<'a>>> = Vec::new();
 
     for instruction in flattened_instructions {
-        let structured_instruction = Rc::new(StructuredInstruction::new(instruction, Vec::new().into()));
+        let structured_instruction = Rc::new(StructuredInstruction::new(instruction, Vec::new().into(), &accounts));
 
         while !instruction_stack.is_empty() && instruction_stack.last().unwrap().stack_height() >= structured_instruction.stack_height() {
             let popped_instruction = instruction_stack.pop().unwrap();
@@ -196,7 +208,8 @@ pub fn get_structured_instructions<'a>(transaction: &'a pb::ConfirmedTransaction
     }
     let flattened_instructions: Vec<WrappedInstruction> = get_flattened_instructions(transaction);
     let logs: &Vec<_> = transaction.meta.as_ref().unwrap().log_messages.as_ref();
-    Ok(structure_flattened_instructions_with_logs(flattened_instructions, &mut logs.iter().map(|log| Log::new(log)).peekable()))
+    let accounts = transaction.resolved_accounts();
+    Ok(structure_flattened_instructions_with_logs(flattened_instructions, &mut logs.iter().map(|log| Log::new(log)).peekable(), accounts))
 }
 
 pub trait StructuredInstructions<'a> {

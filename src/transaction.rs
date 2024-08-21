@@ -1,21 +1,24 @@
 use std::collections::HashMap;
-use substreams_solana::pb::sf::solana::r#type::v1::ConfirmedTransaction;
-use substreams_solana_program_instructions::pubkey::Pubkey;
-use substreams_solana_spl_token as spl_token;
 
-use crate::token::TokenAccount;
+use substreams_solana::pb::sf::solana::r#type::v1::ConfirmedTransaction;
+
+use crate::pubkey::{Pubkey, PubkeyRef};
+// use crate::token::TokenAccount;
 use crate::instruction::{WrappedInstruction, get_flattened_instructions};
+use crate::spl_token;
+use spl_token::{TokenAccount, TOKEN_PROGRAM_ID};
 
 /// Context that can provide enough information to process an instruction
 pub struct TransactionContext<'a> {
-    pub accounts: Vec<&'a Vec<u8>>,
-    pub token_accounts: HashMap<Vec<u8>, TokenAccount>,
+    pub accounts: Vec<PubkeyRef<'a>>,
+    // pub token_accounts: HashMap<Pubkey, TokenAccount>,
+    pub token_accounts: HashMap<PubkeyRef<'a>, TokenAccount<'a>>,
     pub signature: String,
 }
 
 impl<'a> TransactionContext<'a> {
     fn new(transaction: &'a ConfirmedTransaction) -> Self {
-        let accounts = transaction.resolved_accounts();
+        let accounts = transaction.resolved_accounts().iter().map(|x| PubkeyRef { 0: x }).collect();
         let signature = bs58::encode(transaction.transaction.as_ref().unwrap().signatures.get(0).unwrap()).into_string();
         Self {
             accounts,
@@ -24,18 +27,17 @@ impl<'a> TransactionContext<'a> {
         }
     }
 
-    pub fn build(transaction: &'a ConfirmedTransaction) -> Self {
+    pub fn build(transaction: &'a ConfirmedTransaction) -> Result<Self, &'static str> {
         let mut context = Self::new(transaction);
 
         for token_balance in &transaction.meta.as_ref().unwrap().pre_token_balances {
-            let address = context.get_account_from_index(token_balance.account_index as usize).clone();
-            let mint = bs58::decode(&token_balance.mint).into_vec().unwrap();
-            let owner = bs58::decode(&token_balance.owner).into_vec().unwrap();
-            context.token_accounts.insert(address.clone(), TokenAccount {
-                address,
-                mint,
-                owner
-            });
+            let address = context.accounts[token_balance.account_index as usize].clone();
+            let token_account = TokenAccount {
+                address: address.clone(),
+                mint: Pubkey::try_from_string(&token_balance.mint).unwrap(),
+                owner: Pubkey::try_from_string(&token_balance.mint).unwrap(),
+            };
+            context.token_accounts.insert(address, token_account);
         }
 
         let instructions = get_flattened_instructions(transaction);
@@ -43,12 +45,11 @@ impl<'a> TransactionContext<'a> {
             context.update(&instruction);
         }
 
-        context
+        Ok(context)
     }
 
     fn update(&mut self, instruction: &WrappedInstruction) {
-        let program = bs58::encode(self.accounts[instruction.program_id_index() as usize]).into_string();
-        if program != spl_token::TOKEN_PROGRAM {
+        if self.accounts[instruction.program_id_index() as usize] != *TOKEN_PROGRAM_ID {
             return;
         }
         match spl_token::TokenInstruction::unpack(&instruction.data()) {
@@ -58,33 +59,25 @@ impl<'a> TransactionContext<'a> {
             }
             Ok(spl_token::TokenInstruction::InitializeAccount2 { owner }) |
             Ok(spl_token::TokenInstruction::InitializeAccount3 { owner }) => {
-                let token_account = parse_token_account(instruction, self, Some(owner));
+                let token_account = parse_token_account(instruction, self, Some(Pubkey(owner.to_bytes())));
                 self.token_accounts.insert(token_account.address.clone(), token_account);
             }
             _ => ()
         }
     }
 
-    pub fn get_account_from_index(&'a self, index: usize) -> &Vec<u8> {
-        self.accounts[index]
-    }
-
-    pub fn get_token_account_from_address(&'a self, address: &Vec<u8>) -> Option<&TokenAccount> {
+    pub fn get_token_account(&self, address: &PubkeyRef<'a>) -> Option<&TokenAccount> {
         self.token_accounts.get(address)
-    }
-
-    pub fn get_token_account_from_index(&'a self, index: usize) -> &TokenAccount {
-        &self.token_accounts[self.accounts[index]]
     }
 }
 
 /// Parses the Initialize SPL Token Instruction and returns a TokenAccount
-fn parse_token_account(instruction: &WrappedInstruction, context: &TransactionContext, owner: Option<Pubkey>) -> TokenAccount {
-    let address = context.get_account_from_index(instruction.accounts()[0] as usize).clone();
-    let mint = context.get_account_from_index(instruction.accounts()[1] as usize).clone();
+fn parse_token_account<'a>(instruction: &WrappedInstruction, context: &TransactionContext<'a>, owner: Option<Pubkey>) -> TokenAccount<'a> {
+    let address = context.accounts[instruction.accounts()[0] as usize].clone();
+    let mint = context.accounts[instruction.accounts()[1] as usize].to_pubkey().unwrap();
     let owner = match owner {
-        Some(pubkey) => pubkey.to_bytes().to_vec(),
-        None => context.get_account_from_index(instruction.accounts()[2] as usize).clone(),
+        Some(pubkey) => pubkey,
+        None => context.accounts[instruction.accounts()[2] as usize].to_pubkey().unwrap(),
     };
     TokenAccount {
         address,
@@ -94,7 +87,7 @@ fn parse_token_account(instruction: &WrappedInstruction, context: &TransactionCo
 }
 
 pub fn get_context<'a>(transaction: &'a ConfirmedTransaction) -> TransactionContext<'a> {
-    TransactionContext::build(transaction)
+    TransactionContext::build(transaction).unwrap()
 }
 
 pub fn get_signature(transaction: &ConfirmedTransaction) -> String {
