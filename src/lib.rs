@@ -1,7 +1,6 @@
 pub mod transaction;
 pub mod instruction;
 pub mod log;
-pub mod token;
 pub mod pubkey;
 
 pub mod spl_token;

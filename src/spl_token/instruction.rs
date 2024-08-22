@@ -1,7 +1,8 @@
 //! Instruction types
 
-use std::{convert::TryInto, mem::size_of};
-use substreams_solana_program_instructions::pubkey::Pubkey;
+use std::convert::TryInto;
+use crate::pubkey::Pubkey;
+// use substreams_solana_program_instructions::pubkey::Pubkey;
 
 /// Minimum number of multisignature signers (min N)
 pub const MIN_SIGNERS: usize = 1;
@@ -568,117 +569,6 @@ impl<'a> TokenInstruction<'a> {
         })
     }
 
-    /// Packs a [TokenInstruction](enum.TokenInstruction.html) into a byte
-    /// buffer.
-    pub fn pack(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(size_of::<Self>());
-        match self {
-            &Self::InitializeMint {
-                ref mint_authority,
-                ref freeze_authority,
-                decimals,
-            } => {
-                buf.push(0);
-                buf.push(decimals);
-                buf.extend_from_slice(mint_authority.as_ref());
-                Self::pack_pubkey_option(freeze_authority, &mut buf);
-            }
-            Self::InitializeAccount => buf.push(1),
-            &Self::InitializeMultisig { m } => {
-                buf.push(2);
-                buf.push(m);
-            }
-            &Self::Transfer { amount } => {
-                buf.push(3);
-                buf.extend_from_slice(&amount.to_le_bytes());
-            }
-            &Self::Approve { amount } => {
-                buf.push(4);
-                buf.extend_from_slice(&amount.to_le_bytes());
-            }
-            &Self::MintTo { amount } => {
-                buf.push(7);
-                buf.extend_from_slice(&amount.to_le_bytes());
-            }
-            &Self::Burn { amount } => {
-                buf.push(8);
-                buf.extend_from_slice(&amount.to_le_bytes());
-            }
-            Self::Revoke => buf.push(5),
-            Self::SetAuthority {
-                authority_type,
-                ref new_authority,
-            } => {
-                buf.push(6);
-                buf.push(authority_type.into());
-                Self::pack_pubkey_option(new_authority, &mut buf);
-            }
-            Self::CloseAccount => buf.push(9),
-            Self::FreezeAccount => buf.push(10),
-            Self::ThawAccount => buf.push(11),
-            &Self::TransferChecked { amount, decimals } => {
-                buf.push(12);
-                buf.extend_from_slice(&amount.to_le_bytes());
-                buf.push(decimals);
-            }
-            &Self::ApproveChecked { amount, decimals } => {
-                buf.push(13);
-                buf.extend_from_slice(&amount.to_le_bytes());
-                buf.push(decimals);
-            }
-            &Self::MintToChecked { amount, decimals } => {
-                buf.push(14);
-                buf.extend_from_slice(&amount.to_le_bytes());
-                buf.push(decimals);
-            }
-            &Self::BurnChecked { amount, decimals } => {
-                buf.push(15);
-                buf.extend_from_slice(&amount.to_le_bytes());
-                buf.push(decimals);
-            }
-            &Self::InitializeAccount2 { owner } => {
-                buf.push(16);
-                buf.extend_from_slice(owner.as_ref());
-            }
-            &Self::SyncNative => {
-                buf.push(17);
-            }
-            &Self::InitializeAccount3 { owner } => {
-                buf.push(18);
-                buf.extend_from_slice(owner.as_ref());
-            }
-            &Self::InitializeMultisig2 { m } => {
-                buf.push(19);
-                buf.push(m);
-            }
-            &Self::InitializeMint2 {
-                ref mint_authority,
-                ref freeze_authority,
-                decimals,
-            } => {
-                buf.push(20);
-                buf.push(decimals);
-                buf.extend_from_slice(mint_authority.as_ref());
-                Self::pack_pubkey_option(freeze_authority, &mut buf);
-            }
-            &Self::GetAccountDataSize => {
-                buf.push(21);
-            }
-            &Self::InitializeImmutableOwner => {
-                buf.push(22);
-            }
-            &Self::AmountToUiAmount { amount } => {
-                buf.push(23);
-                buf.extend_from_slice(&amount.to_le_bytes());
-            }
-            Self::UiAmountToAmount { ui_amount } => {
-                buf.push(24);
-                buf.extend_from_slice(ui_amount.as_bytes());
-            }
-        };
-        buf
-    }
-
     fn unpack_pubkey(input: &[u8]) -> Result<(Pubkey, &[u8]), &'static str> {
         if input.len() >= 32 {
             let (key, rest) = input.split_at(32);
@@ -698,16 +588,6 @@ impl<'a> TokenInstruction<'a> {
                 Ok((Option::Some(pk), rest))
             }
             _ => Err("Invalid instruction".into()),
-        }
-    }
-
-    fn pack_pubkey_option(value: &Option<Pubkey>, buf: &mut Vec<u8>) {
-        match *value {
-            Option::Some(ref key) => {
-                buf.push(1);
-                buf.extend_from_slice(&key.to_bytes());
-            }
-            Option::None => buf.push(0),
         }
     }
 
@@ -742,15 +622,6 @@ pub enum AuthorityType {
 }
 
 impl AuthorityType {
-    fn into(&self) -> u8 {
-        match self {
-            AuthorityType::MintTokens => 0,
-            AuthorityType::FreezeAccount => 1,
-            AuthorityType::AccountOwner => 2,
-            AuthorityType::CloseAccount => 3,
-        }
-    }
-
     fn from(index: u8) -> Result<Self, &'static str> {
         match index {
             0 => Ok(AuthorityType::MintTokens),

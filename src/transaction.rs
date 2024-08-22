@@ -3,15 +3,12 @@ use std::collections::HashMap;
 use substreams_solana::pb::sf::solana::r#type::v1::ConfirmedTransaction;
 
 use crate::pubkey::{Pubkey, PubkeyRef};
-// use crate::token::TokenAccount;
 use crate::instruction::{WrappedInstruction, get_flattened_instructions};
-use crate::spl_token;
-use spl_token::{TokenAccount, TOKEN_PROGRAM_ID};
+use crate::spl_token::{TokenInstruction, TokenAccount, TOKEN_PROGRAM_ID};
 
 /// Context that can provide enough information to process an instruction
 pub struct TransactionContext<'a> {
     pub accounts: Vec<PubkeyRef<'a>>,
-    // pub token_accounts: HashMap<Pubkey, TokenAccount>,
     pub token_accounts: HashMap<PubkeyRef<'a>, TokenAccount<'a>>,
     pub signature: String,
 }
@@ -52,14 +49,14 @@ impl<'a> TransactionContext<'a> {
         if self.accounts[instruction.program_id_index() as usize] != *TOKEN_PROGRAM_ID {
             return;
         }
-        match spl_token::TokenInstruction::unpack(&instruction.data()) {
-            Ok(spl_token::TokenInstruction::InitializeAccount) => {
+        match TokenInstruction::unpack(&instruction.data()) {
+            Ok(TokenInstruction::InitializeAccount) => {
                 let token_account = parse_token_account(instruction, self, None);
                 self.token_accounts.insert(token_account.address.clone(), token_account);
             }
-            Ok(spl_token::TokenInstruction::InitializeAccount2 { owner }) |
-            Ok(spl_token::TokenInstruction::InitializeAccount3 { owner }) => {
-                let token_account = parse_token_account(instruction, self, Some(Pubkey(owner.to_bytes())));
+            Ok(TokenInstruction::InitializeAccount2 { owner }) |
+            Ok(TokenInstruction::InitializeAccount3 { owner }) => {
+                let token_account = parse_token_account(instruction, self, Some(owner));
                 self.token_accounts.insert(token_account.address.clone(), token_account);
             }
             _ => ()
