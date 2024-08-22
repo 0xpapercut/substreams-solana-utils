@@ -32,7 +32,7 @@ impl<'a> TransactionContext<'a> {
             let token_account = TokenAccount {
                 address: address.clone(),
                 mint: Pubkey::try_from_string(&token_balance.mint).unwrap(),
-                owner: Pubkey::try_from_string(&token_balance.mint).unwrap(),
+                owner: Pubkey::try_from_string(&token_balance.owner).unwrap(),
             };
             context.token_accounts.insert(address, token_account);
         }
