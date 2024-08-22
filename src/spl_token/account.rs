@@ -1,6 +1,6 @@
 use crate::pubkey::{Pubkey, PubkeyRef};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TokenAccount<'a> {
     pub address: PubkeyRef<'a>,
     pub mint: Pubkey,
