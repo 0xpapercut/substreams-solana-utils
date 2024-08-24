@@ -74,7 +74,7 @@ impl<'a> StructuredInstruction<'a> {
             logs: RefCell::new(Vec::new()),
         }
     }
-    pub fn program_id(&'a self) -> &PubkeyRef<'a> { &self.program_id }
+    pub fn program_id(&self) -> PubkeyRef<'a> { self.program_id }
     pub fn program_id_index(&self) -> u32 { self.instruction.program_id_index() }
     pub fn accounts(&self) -> &Vec<PubkeyRef> { &self.accounts }
     pub fn data(&self) -> &Vec<u8> { self.instruction.data() }
