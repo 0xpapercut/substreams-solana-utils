@@ -213,7 +213,7 @@ pub fn get_structured_instructions<'a>(transaction: &'a pb::ConfirmedTransaction
 }
 
 pub trait StructuredInstructions<'a> {
-    fn flattened(&'a self) -> Vec<Rc<StructuredInstruction<'a>>>;
+    fn flattened(&self) -> Vec<Rc<StructuredInstruction<'a>>>;
 }
 
 impl<'a> StructuredInstructions<'a> for Vec<Rc<StructuredInstruction<'a>>> {
@@ -221,7 +221,7 @@ impl<'a> StructuredInstructions<'a> for Vec<Rc<StructuredInstruction<'a>>> {
         let mut instructions: Vec<Rc<StructuredInstruction>> = Vec::new();
         for instruction in self {
             instructions.push(Rc::clone(instruction));
-            instructions.extend(instruction.inner_instructions.borrow().iter().map(Rc::clone));
+            instructions.extend(instruction.inner_instructions().flattened().iter().map(Rc::clone));
         }
         instructions
     }
