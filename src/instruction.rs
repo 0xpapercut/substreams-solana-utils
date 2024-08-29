@@ -2,6 +2,7 @@ use std::rc::{Rc, Weak};
 use std::cell::{Ref, RefCell};
 use std::iter::Peekable;
 use substreams_solana::pb::sf::solana::r#type::v1 as pb;
+use anyhow::{anyhow, Error};
 
 use crate::log::Log;
 use crate::pubkey::PubkeyRef;
@@ -202,9 +203,9 @@ pub fn get_flattened_instructions(confirmed_transaction: &pb::ConfirmedTransacti
     wrapped_instructions
 }
 
-pub fn get_structured_instructions<'a>(transaction: &'a pb::ConfirmedTransaction) -> Result<Vec<Rc<StructuredInstruction<'a>>>, String> {
+pub fn get_structured_instructions<'a>(transaction: &'a pb::ConfirmedTransaction) -> Result<Vec<Rc<StructuredInstruction<'a>>>, Error> {
     if let Some(_) = transaction.meta.as_ref().unwrap().err {
-        return Err("Cannot structure instructions of a failed transaction.".to_string());
+        return Err(anyhow!("Cannot structure instructions of a failed transaction."));
     }
     let flattened_instructions: Vec<WrappedInstruction> = get_flattened_instructions(transaction);
     let logs: &Vec<_> = transaction.meta.as_ref().unwrap().log_messages.as_ref();

@@ -6,6 +6,8 @@ use crate::pubkey::{Pubkey, PubkeyRef};
 use crate::instruction::{WrappedInstruction, get_flattened_instructions};
 use crate::spl_token::{TokenInstruction, TokenAccount, TOKEN_PROGRAM_ID};
 
+use anyhow::{anyhow, Error};
+
 /// Context that can provide enough information to process an instruction
 pub struct TransactionContext<'a> {
     pub accounts: Vec<PubkeyRef<'a>>,
@@ -46,7 +48,7 @@ impl<'a> TransactionContext<'a> {
     }
 
     fn update(&mut self, instruction: &WrappedInstruction) {
-        if self.accounts[instruction.program_id_index() as usize] != *TOKEN_PROGRAM_ID {
+        if self.accounts[instruction.program_id_index() as usize] != TOKEN_PROGRAM_ID {
             return;
         }
         match TokenInstruction::unpack(&instruction.data()) {
@@ -83,8 +85,11 @@ fn parse_token_account<'a>(instruction: &WrappedInstruction, context: &Transacti
     }
 }
 
-pub fn get_context<'a>(transaction: &'a ConfirmedTransaction) -> TransactionContext<'a> {
-    TransactionContext::build(transaction).unwrap()
+pub fn get_context<'a>(transaction: &'a ConfirmedTransaction) -> Result<TransactionContext<'a>, Error> {
+    if let Some(_) = transaction.meta.as_ref().unwrap().err {
+        return Err(anyhow!("Cannot get context of failed instruction."));
+    }
+    TransactionContext::build(transaction).map_err(|x| anyhow!(x))
 }
 
 pub fn get_signature(transaction: &ConfirmedTransaction) -> String {

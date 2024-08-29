@@ -1,6 +1,4 @@
 use crate::pubkey::Pubkey;
-use lazy_static::lazy_static;
+use substreams_solana::b58;
 
-lazy_static! {
-    pub static ref SYSTEM_PROGRAM_ID: Pubkey = Pubkey::from_string("11111111111111111111111111111111");
-}
+pub const SYSTEM_PROGRAM_ID: Pubkey = Pubkey(b58!("11111111111111111111111111111111"));

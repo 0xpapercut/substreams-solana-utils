@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use regex;
 use base64;
 

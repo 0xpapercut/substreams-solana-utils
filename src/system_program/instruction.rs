@@ -1,6 +1,6 @@
-// use substreams_solana_program_instructions::pubkey::Pubkey;
 use crate::pubkey::Pubkey;
 use borsh::BorshDeserialize;
+use anyhow::{anyhow, Error, Context};
 
 #[derive(Debug, BorshDeserialize)]
 pub struct CreateAccount {
@@ -189,7 +189,7 @@ pub enum SystemInstruction {
 }
 
 impl SystemInstruction {
-    pub fn unpack(data: &[u8]) -> Result<Self, &'static str> {
+    pub fn unpack(data: &[u8]) -> Result<Self, Error> {
         let (tag, data) = data.split_at(4);
         match tag[0] {
             0 => CreateAccount::unpack(data).map(Self::CreateAccount),
@@ -205,68 +205,66 @@ impl SystemInstruction {
             10 => AssignWithSeed::unpack(data).map(Self::AssignWithSeed),
             11 => TransferWithSeed::unpack(data).map(Self::TransferWithSeed),
             12 => Ok(Self::UpgradeNonceAccount),
-            _ => Err("Failed to unpack System Program instruction.")
+            _ => Err(anyhow!("Failed to unpack System instruction."))
         }
     }
 }
 
 impl CreateAccount {
-    pub fn unpack(data: &[u8]) -> Result<Self, &'static str> {
-        Ok(Self::try_from_slice(data).unwrap())
+    pub fn unpack(data: &[u8]) -> Result<Self, Error> {
+        Self::try_from_slice(data).context("Failed to unpack CreateAccount System instruction")
     }
 }
 
 impl Assign {
-    pub fn unpack(data: &[u8]) -> Result<Self, &'static str> {
-        Ok(Self::try_from_slice(data).unwrap())
+    pub fn unpack(data: &[u8]) -> Result<Self, Error> {
+        Self::try_from_slice(data).context("Failed to unpack Assign System instruction")
     }
 }
 
 impl Transfer {
-    pub fn unpack(data: &[u8]) -> Result<Self, &'static str> {
-        Ok(Self::try_from_slice(data).unwrap())
+    pub fn unpack(data: &[u8]) -> Result<Self, Error> {
+        Self::deserialize(&mut &data[..]).context("Failed to unpack Transfer System instruction")
     }
 }
 
 impl TransferWithSeed {
-    pub fn unpack(data: &[u8]) -> Result<Self, &'static str> {
-        Ok(Self::try_from_slice(data).unwrap())
+    pub fn unpack(data: &[u8]) -> Result<Self, Error> {
+        Self::try_from_slice(data).context("Failed to unpack TransferWithSeed System instruction")
     }
 }
 
 impl CreateAccountWithSeed {
-    pub fn unpack(data: &[u8]) -> Result<Self, &'static str> {
-        Ok(Self::try_from_slice(data).unwrap())
+    pub fn unpack(data: &[u8]) -> Result<Self, Error> {
+        Self::try_from_slice(data).context("Failed to unpack CreateAccountWithSeed System instruction")
     }
 }
 
 impl Allocate {
-    pub fn unpack(data: &[u8]) -> Result<Self, &'static str> {
-        Ok(Self::try_from_slice(data).unwrap())
-        // let space = u64::from_le_bytes(data.try_into().unwrap());
-        // Ok(Allocate { space })
+    pub fn unpack(data: &[u8]) -> Result<Self, Error> {
+        Self::try_from_slice(data).context("Failed to unpack Allocate instruction")
     }
 }
 
 impl AllocateWithSeed {
-    pub fn unpack(data: &[u8]) -> Result<Self, &'static str> {
-        Ok(Self::try_from_slice(data).unwrap())
+    pub fn unpack(data: &[u8]) -> Result<Self, Error> {
+        Self::try_from_slice(data).context("Failed to unpack AllocateWithSeed System instruction")
     }
 }
 
 impl AssignWithSeed {
-    pub fn unpack(data: &[u8]) -> Result<Self, &'static str> {
-        Ok(Self::try_from_slice(data).unwrap())
+    pub fn unpack(data: &[u8]) -> Result<Self, Error> {
+        Self::try_from_slice(data).context("Failed to unpack AssignWithSeed System instruction")
     }
 }
 
 trait Unpack {
-    fn unpack(data: &[u8]) -> Result<Self, &'static str> where Self: Sized;
+    fn unpack(data: &[u8]) -> Result<Self, Error> where Self: Sized;
 }
 
 impl Unpack for u64 {
-    fn unpack(data: &[u8]) -> Result<Self, &'static str> where Self: Sized {
-        Ok(u64::from_le_bytes(data.try_into().unwrap()))
+    fn unpack(data: &[u8]) -> Result<Self, Error> where Self: Sized {
+        Ok(u64::from_le_bytes(data.try_into()?))
     }
 }
 

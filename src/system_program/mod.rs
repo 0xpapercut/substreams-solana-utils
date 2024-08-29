@@ -1,4 +1,4 @@
-mod constants;
+pub mod constants;
 pub use constants::*;
-mod instruction;
+pub mod instruction;
 pub use instruction::*;
