@@ -212,13 +212,13 @@ impl SystemInstruction {
 
 impl CreateAccount {
     pub fn unpack(data: &[u8]) -> Result<Self, Error> {
-        Self::try_from_slice(data).context("Failed to unpack CreateAccount System instruction")
+        Self::deserialize(&mut &data[..]).context("Failed to unpack CreateAccount System instruction")
     }
 }
 
 impl Assign {
     pub fn unpack(data: &[u8]) -> Result<Self, Error> {
-        Self::try_from_slice(data).context("Failed to unpack Assign System instruction")
+        Self::deserialize(&mut &data[..]).context("Failed to unpack Assign System instruction")
     }
 }
 
@@ -230,31 +230,31 @@ impl Transfer {
 
 impl TransferWithSeed {
     pub fn unpack(data: &[u8]) -> Result<Self, Error> {
-        Self::try_from_slice(data).context("Failed to unpack TransferWithSeed System instruction")
+        Self::deserialize(&mut &data[..]).context("Failed to unpack TransferWithSeed System instruction")
     }
 }
 
 impl CreateAccountWithSeed {
     pub fn unpack(data: &[u8]) -> Result<Self, Error> {
-        Self::try_from_slice(data).context("Failed to unpack CreateAccountWithSeed System instruction")
+        Self::deserialize(&mut &data[..]).context("Failed to unpack CreateAccountWithSeed System instruction")
     }
 }
 
 impl Allocate {
     pub fn unpack(data: &[u8]) -> Result<Self, Error> {
-        Self::try_from_slice(data).context("Failed to unpack Allocate instruction")
+        Self::deserialize(&mut &data[..]).context("Failed to unpack Allocate instruction")
     }
 }
 
 impl AllocateWithSeed {
     pub fn unpack(data: &[u8]) -> Result<Self, Error> {
-        Self::try_from_slice(data).context("Failed to unpack AllocateWithSeed System instruction")
+        Self::deserialize(&mut &data[..]).context("Failed to unpack AllocateWithSeed System instruction")
     }
 }
 
 impl AssignWithSeed {
     pub fn unpack(data: &[u8]) -> Result<Self, Error> {
-        Self::try_from_slice(data).context("Failed to unpack AssignWithSeed System instruction")
+        Self::deserialize(&mut &data[..]).context("Failed to unpack AssignWithSeed System instruction")
     }
 }
 
