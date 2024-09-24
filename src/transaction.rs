@@ -4,7 +4,7 @@ use substreams_solana::pb::sf::solana::r#type::v1::ConfirmedTransaction;
 
 use crate::pubkey::{Pubkey, PubkeyRef};
 use crate::instruction::{WrappedInstruction, get_flattened_instructions};
-use crate::spl_token::{TokenInstruction, TokenAccount, TOKEN_PROGRAM_ID, SOL_MINT};
+use crate::spl_token::{TokenInstruction, TokenAccount, TOKEN_PROGRAM_ID};
 
 use anyhow::{anyhow, Error};
 
@@ -128,7 +128,6 @@ impl<'a> TransactionContext<'a> {
                 let address = self.accounts[instruction.accounts()[0] as usize];
                 let account = self.token_accounts.get_mut(&address).unwrap();
                 account.amount = Some(0);
-                assert!(account.mint == SOL_MINT);
             },
             _ => ()
         }
