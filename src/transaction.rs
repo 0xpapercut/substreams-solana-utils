@@ -4,7 +4,7 @@ use substreams_solana::pb::sf::solana::r#type::v1::ConfirmedTransaction;
 
 use crate::pubkey::{Pubkey, PubkeyRef};
 use crate::instruction::{WrappedInstruction, get_flattened_instructions};
-use crate::spl_token::{TokenInstruction, TokenAccount, TOKEN_PROGRAM_ID};
+use crate::spl_token::{TokenInstruction, TokenAccount, TOKEN_PROGRAM_ID, SOL_MINT};
 
 use anyhow::{anyhow, Error};
 
@@ -26,6 +26,23 @@ impl<'a> TransactionContext<'a> {
         }
     }
 
+    pub fn build_partial(transaction: &'a ConfirmedTransaction) -> Result<Self, &'static str> {
+        let mut context = Self::new(transaction);
+
+        for token_balance in &transaction.meta.as_ref().unwrap().pre_token_balances {
+            let address = context.accounts[token_balance.account_index as usize].clone();
+            let token_account = TokenAccount {
+                address: address.clone(),
+                mint: Pubkey::try_from_string(&token_balance.mint).unwrap(),
+                owner: Pubkey::try_from_string(&token_balance.owner).unwrap(),
+                amount: Some(token_balance.ui_token_amount.as_ref().unwrap().amount.parse::<u64>().expect("Failed to parse u64"))
+            };
+            context.token_accounts.insert(address, token_account);
+        }
+
+        Ok(context)
+    }
+
     pub fn build(transaction: &'a ConfirmedTransaction) -> Result<Self, &'static str> {
         let mut context = Self::new(transaction);
 
@@ -35,6 +52,7 @@ impl<'a> TransactionContext<'a> {
                 address: address.clone(),
                 mint: Pubkey::try_from_string(&token_balance.mint).unwrap(),
                 owner: Pubkey::try_from_string(&token_balance.owner).unwrap(),
+                amount: Some(token_balance.ui_token_amount.as_ref().unwrap().amount.parse::<u64>().expect("Failed to parse u64"))
             };
             context.token_accounts.insert(address, token_account);
         }
@@ -53,14 +71,65 @@ impl<'a> TransactionContext<'a> {
         }
         match TokenInstruction::unpack(&instruction.data()) {
             Ok(TokenInstruction::InitializeAccount) => {
-                let token_account = parse_token_account(instruction, self, None);
+                let token_account = parse_token_account_from_initialize_account_instruction(instruction, self, None);
                 self.token_accounts.insert(token_account.address.clone(), token_account);
             }
             Ok(TokenInstruction::InitializeAccount2 { owner }) |
             Ok(TokenInstruction::InitializeAccount3 { owner }) => {
-                let token_account = parse_token_account(instruction, self, Some(owner));
+                let token_account = parse_token_account_from_initialize_account_instruction(instruction, self, Some(owner));
                 self.token_accounts.insert(token_account.address.clone(), token_account);
             }
+            Ok(TokenInstruction::Transfer { amount }) => {
+                let source_address = self.accounts[instruction.accounts()[0] as usize];
+                let destination_address = self.accounts[instruction.accounts()[1] as usize];
+
+                let source_account = self.token_accounts.get_mut(&source_address).unwrap();
+                source_account.amount = source_account.amount.map(|x| x - amount);
+
+                let destination_account = self.token_accounts.get_mut(&destination_address).unwrap();
+                destination_account.amount = destination_account.amount.map(|x| x + amount);
+            },
+            Ok(TokenInstruction::TransferChecked { amount, decimals: _ }) => {
+                let source_address = self.accounts[instruction.accounts()[0] as usize];
+                let destination_address = self.accounts[instruction.accounts()[2] as usize];
+
+                let source_account = self.token_accounts.get_mut(&source_address).unwrap();
+                source_account.amount = source_account.amount.map(|x| x - amount);
+
+                let destination_account = self.token_accounts.get_mut(&destination_address).unwrap();
+                destination_account.amount = destination_account.amount.map(|x| x + amount);
+            },
+            Ok(TokenInstruction::MintTo { amount }) => {
+                let address = self.accounts[instruction.accounts()[1] as usize];
+                let account = self.token_accounts.get_mut(&address).unwrap();
+                account.amount = account.amount.map(|x| x + amount);
+            },
+            Ok(TokenInstruction::MintToChecked { amount, decimals: _ }) => {
+                let address = self.accounts[instruction.accounts()[1] as usize];
+                let account = self.token_accounts.get_mut(&address).unwrap();
+                account.amount = account.amount.map(|x| x + amount);
+            },
+            Ok(TokenInstruction::Burn { amount }) => {
+                let address = self.accounts[instruction.accounts()[0] as usize];
+                let account = self.token_accounts.get_mut(&address).unwrap();
+                account.amount = account.amount.map(|x| x - amount);
+            },
+            Ok(TokenInstruction::BurnChecked { amount, decimals: _ }) => {
+                let address = self.accounts[instruction.accounts()[0] as usize];
+                let account = self.token_accounts.get_mut(&address).unwrap();
+                account.amount = account.amount.map(|x| x - amount);
+            },
+            Ok(TokenInstruction::SyncNative) => {
+                let address = self.accounts[instruction.accounts()[0] as usize];
+                let account = self.token_accounts.get_mut(&address).unwrap();
+                account.amount = None;
+            },
+            Ok(TokenInstruction::CloseAccount) => {
+                let address = self.accounts[instruction.accounts()[0] as usize];
+                let account = self.token_accounts.get_mut(&address).unwrap();
+                account.amount = Some(0);
+                assert!(account.mint == SOL_MINT);
+            },
             _ => ()
         }
     }
@@ -71,7 +140,7 @@ impl<'a> TransactionContext<'a> {
 }
 
 /// Parses the Initialize SPL Token Instruction and returns a TokenAccount
-fn parse_token_account<'a>(instruction: &WrappedInstruction, context: &TransactionContext<'a>, owner: Option<Pubkey>) -> TokenAccount<'a> {
+fn parse_token_account_from_initialize_account_instruction<'a>(instruction: &WrappedInstruction, context: &TransactionContext<'a>, owner: Option<Pubkey>) -> TokenAccount<'a> {
     let address = context.accounts[instruction.accounts()[0] as usize].clone();
     let mint = context.accounts[instruction.accounts()[1] as usize].to_pubkey().unwrap();
     let owner = match owner {
@@ -81,7 +150,8 @@ fn parse_token_account<'a>(instruction: &WrappedInstruction, context: &Transacti
     TokenAccount {
         address,
         mint,
-        owner
+        owner,
+        amount: Some(0),
     }
 }
 
