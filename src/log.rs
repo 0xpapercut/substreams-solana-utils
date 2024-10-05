@@ -57,6 +57,19 @@ impl<'a> Log<'a> {
     }
 }
 
+impl<'a> std::fmt::Display for Log<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Data(data_log) => write!(f, "{}", data_log.log),
+            Self::Invoke(invoke_log) => write!(f, "{}", invoke_log.log),
+            Self::Program(program_log) => write!(f, "{}", program_log.log),
+            Self::Return(return_log) => write!(f, "{}", return_log.log),
+            Self::Success(success_log) => write!(f, "{}", success_log.log),
+            Self::Unknown(unknown_log) => write!(f, "{}", unknown_log.log),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ProgramLog<'a> {
     log: &'a String,
