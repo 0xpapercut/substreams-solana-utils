@@ -1,0 +1,25 @@
+specVersion: v0.1.0
+package:
+  name: 'examples'
+  version: v0.1.1
+
+protobuf:
+  files:
+    - instruction_logs.proto
+  importPaths:
+    - ./proto
+
+binaries:
+  default:
+    type: wasm/rust-v1
+    file: target/wasm32-unknown-unknown/release/examples.wasm
+
+modules:
+  - name: instruction_logs
+    kind: map
+    inputs:
+      - source: sf.solana.type.v1.Block
+    output:
+      type: proto:instruction_logs.InstructionLogsOutput
+
+network: solana

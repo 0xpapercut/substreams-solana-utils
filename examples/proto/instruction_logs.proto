@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package instruction_logs;
+
+message InstructionLogsOutput {
+    repeated Transaction transactions = 1;
+}
+
+message Transaction {
+    string signature = 1;
+    repeated Instruction instructions = 2;
+}
+
+message Instruction {
+    string program_id = 1;
+    repeated string logs = 2;
+}
+
