@@ -1,11 +1,12 @@
 use std::rc::{Rc, Weak};
 use std::cell::{Ref, RefCell};
 use std::iter::Peekable;
+use substreams_solana::b58;
 use substreams_solana::pb::sf::solana::r#type::v1 as pb;
 use anyhow::{anyhow, Error};
 
 use crate::log::Log;
-use crate::pubkey::PubkeyRef;
+use crate::pubkey::{Pubkey, PubkeyRef};
 
 #[derive(Debug)]
 pub enum WrappedInstruction<'a> {
@@ -16,26 +17,26 @@ pub enum WrappedInstruction<'a> {
 impl WrappedInstruction<'_> {
     pub fn program_id_index(&self) -> u32 {
         match self {
-            Self::Compiled(instr) => instr.program_id_index,
-            Self::Inner(instr) => instr.program_id_index,
+            Self::Compiled(instruction) => instruction.program_id_index,
+            Self::Inner(instruction) => instruction.program_id_index,
         }
     }
     pub fn accounts(&self) -> &Vec<u8> {
         match self {
-            Self::Compiled(instr) => &instr.accounts,
-            Self::Inner(instr) => &instr.accounts,
+            Self::Compiled(instruction) => &instruction.accounts,
+            Self::Inner(instruction) => &instruction.accounts,
         }
     }
     pub fn data(&self) -> &Vec<u8> {
         match self {
-            Self::Compiled(instr) => &instr.data,
-            Self::Inner(instr) => &instr.data,
+            Self::Compiled(instruction) => &instruction.data,
+            Self::Inner(instruction) => &instruction.data,
         }
     }
     pub fn stack_height(&self) -> Option<u32> {
         match self {
             Self::Compiled(_) => Some(1),
-            Self::Inner(instr) => instr.stack_height,
+            Self::Inner(instruction) => instruction.stack_height,
         }
     }
 }
@@ -51,6 +52,10 @@ impl<'a> From<&'a pb::InnerInstruction> for WrappedInstruction<'a> {
         WrappedInstruction::Inner(&value)
     }
 }
+
+const PROGRAMS_WITHOUT_LOGGING: &[Pubkey] = &[
+    Pubkey(b58!("Ed25519SigVerify111111111111111111111111111")),
+];
 
 #[derive(Debug)]
 pub struct StructuredInstruction<'a> {
@@ -97,49 +102,47 @@ impl<'a> StructuredInstruction<'a> {
     }
 }
 
-fn take_until_success_or_invoke_log<'a, I>(logs: &mut Peekable<I>) -> Vec<Log<'a>>
-where
-    I: Iterator<Item = Log<'a>>
-{
-    let mut taken_logs = Vec::new();
-    let first_log_was_invoke = logs.peek().map_or(false, |log| log.is_invoke());
-    let mut i = 0;
-    loop {
-        if let Some(log) = logs.peek() {
-            if (i > 0 && log.is_invoke()) || (first_log_was_invoke && log.is_success()) {
-                break;
-            }
-        } else {
-            break;
-        }
-        let log = logs.next().unwrap();
-        let log_is_success = log.is_success();
-        taken_logs.push(log);
-        if log_is_success {
-            break;
-        }
-        i += 1;
-    }
-    taken_logs
+pub struct LogStack<'a> {
+    stack: Vec<Vec<Log<'a>>>,
 }
 
-fn take_expect_invoke_or_success<'a, I>(logs: &mut Peekable<I>) -> Vec<Log<'a>>
-where
-    I: Iterator<Item = Log<'a>>
-{
-    let mut taken_logs = Vec::new();
-    loop {
-        if let Some(log) = logs.peek() {
-            if log.is_invoke() || log.is_success() {
+impl<'a> LogStack<'a> {
+    pub fn new() -> Self {
+        Self { stack: Vec::new() }
+    }
+
+    pub fn open<I>(&mut self, logs: &mut Peekable<I>, program_id: PubkeyRef)
+    where
+        I: Iterator<Item = Log<'a>>
+    {
+        if PROGRAMS_WITHOUT_LOGGING.iter().any(|x| *x == program_id) {
+            return;
+        }
+        if let Some(last) = self.stack.last_mut() {
+            while !logs.peek().unwrap().is_invoke() {
+                last.push(logs.next().unwrap());
+
+            }
+        }
+        self.stack.push(vec![logs.next().unwrap()]);
+    }
+
+    pub fn close<I>(&mut self, logs: &mut Peekable<I>, program_id: PubkeyRef) -> Vec<Log<'a>>
+    where
+        I: Iterator<Item = Log<'a>>
+    {
+        if PROGRAMS_WITHOUT_LOGGING.iter().any(|x| *x == program_id) {
+            return Vec::new();
+        }
+        while let Some(log) = logs.next() {
+            let is_success = log.is_success();
+            self.stack.last_mut().unwrap().push(log);
+            if is_success {
                 break;
             }
-        } else {
-            break;
         }
-        let log = logs.next().unwrap();
-        taken_logs.push(log);
+        self.stack.pop().unwrap()
     }
-    taken_logs
 }
 
 pub fn structure_flattened_instructions_with_logs<'a, I>(
@@ -152,31 +155,33 @@ where
 {
     let mut structured_instructions: Vec<Rc<StructuredInstruction<'a>>> = Vec::new();
     let mut instruction_stack: Vec<Rc<StructuredInstruction<'a>>> = Vec::new();
+    let mut log_stack = LogStack::new();
 
     for instruction in flattened_instructions {
         let structured_instruction = Rc::new(StructuredInstruction::new(instruction, Vec::new().into(), &accounts));
 
         while !instruction_stack.is_empty() && instruction_stack.last().unwrap().stack_height() >= structured_instruction.stack_height() {
             let popped_instruction = instruction_stack.pop().unwrap();
-            popped_instruction.logs.borrow_mut().extend(take_until_success_or_invoke_log(logs));
+            *popped_instruction.logs.borrow_mut() = log_stack.close(logs, popped_instruction.program_id());
+
             if !instruction_stack.is_empty() {
                 *popped_instruction.parent_instruction.borrow_mut() = Some(Rc::downgrade(instruction_stack.last().unwrap()));
                 instruction_stack.last_mut().unwrap().inner_instructions.borrow_mut().push(popped_instruction);
-                instruction_stack.last_mut().unwrap().logs.borrow_mut().extend(take_expect_invoke_or_success(logs));
             } else {
                 structured_instructions.push(popped_instruction);
             }
         }
-        structured_instruction.logs.borrow_mut().extend(take_until_success_or_invoke_log(logs));
+
+        log_stack.open(logs, structured_instruction.program_id());
         instruction_stack.push(structured_instruction);
     }
 
     while !instruction_stack.is_empty() {
         let popped_instruction = instruction_stack.pop().unwrap();
-        popped_instruction.logs.borrow_mut().extend(take_until_success_or_invoke_log(logs));
+        *popped_instruction.logs.borrow_mut() = log_stack.close(logs, popped_instruction.program_id());
+
         if !instruction_stack.is_empty() {
             instruction_stack.last_mut().unwrap().inner_instructions.borrow_mut().push(popped_instruction);
-            instruction_stack.last_mut().unwrap().logs.borrow_mut().extend(take_expect_invoke_or_success(logs));
         } else {
             structured_instructions.push(popped_instruction)
         }
