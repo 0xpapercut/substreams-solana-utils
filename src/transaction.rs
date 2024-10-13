@@ -12,16 +12,21 @@ use anyhow::{anyhow, Error};
 pub struct TransactionContext<'a> {
     pub accounts: Vec<PubkeyRef<'a>>,
     pub token_accounts: HashMap<PubkeyRef<'a>, TokenAccount<'a>>,
+    pub signers: Vec<PubkeyRef<'a>>,
     pub signature: String,
 }
 
 impl<'a> TransactionContext<'a> {
     fn new(transaction: &'a ConfirmedTransaction) -> Self {
-        let accounts = transaction.resolved_accounts().iter().map(|x| PubkeyRef { 0: x }).collect();
+        let accounts = transaction.resolved_accounts().iter().map(|x| PubkeyRef { 0: x }).collect::<Vec<_>>();
         let signature = bs58::encode(transaction.transaction.as_ref().unwrap().signatures.get(0).unwrap()).into_string();
+        let num_required_signatures = transaction.transaction.as_ref().unwrap().message.as_ref().unwrap().header.as_ref().unwrap().num_required_signatures;
+        let signers = accounts[..num_required_signatures as usize].to_vec();
+
         Self {
             accounts,
             token_accounts: HashMap::new(),
+            signers,
             signature,
         }
     }
