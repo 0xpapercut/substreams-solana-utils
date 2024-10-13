@@ -10,6 +10,7 @@ pub enum Log<'a> {
     Return(ReturnLog<'a>), // "Program return: {} {}"
     Data(DataLog<'a>), //  "Program data: {}"
     Program(ProgramLog<'a>), // "Program log: {}"
+    Truncated(TruncatedLog<'a>), // "Log truncated"
     Unknown(UnknownLog<'a>),
 }
 
@@ -29,6 +30,9 @@ impl<'a> Log<'a> {
         }
         if log.split_whitespace().count() == 3 && log.starts_with("Program") && log.ends_with("success") {
             return Self::Success(SuccessLog::new(log))
+        }
+        if log == "Log truncated" {
+            return Self::Truncated(TruncatedLog::new(log))
         }
         Self::Unknown(UnknownLog::new(log))
     }
@@ -52,6 +56,10 @@ impl<'a> Log<'a> {
         matches!(self, Self::Program(_))
     }
 
+    pub fn is_truncated(&self) -> bool {
+        matches!(self, Self::Truncated(_))
+    }
+
     pub fn is_unknown(&self) -> bool {
         matches!(self, Self::Unknown(_))
     }
@@ -65,6 +73,7 @@ impl<'a> std::fmt::Display for Log<'a> {
             Self::Program(program_log) => write!(f, "{}", program_log.log),
             Self::Return(return_log) => write!(f, "{}", return_log.log),
             Self::Success(success_log) => write!(f, "{}", success_log.log),
+            Self::Truncated(truncated_log) => write!(f, "{}", truncated_log.log),
             Self::Unknown(unknown_log) => write!(f, "{}", unknown_log.log),
         }
     }
@@ -187,6 +196,17 @@ impl<'a> DataLog<'a> {
         } else {
             Err("Error parsing DataLog.".into())
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct TruncatedLog<'a> {
+    pub log: &'a String,
+}
+
+impl<'a> TruncatedLog<'a> {
+    pub fn new(log: &'a String) -> Self {
+        Self { log }
     }
 }
 

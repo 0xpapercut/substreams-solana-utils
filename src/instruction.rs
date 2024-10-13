@@ -55,6 +55,7 @@ impl<'a> From<&'a pb::InnerInstruction> for WrappedInstruction<'a> {
 
 const PROGRAMS_WITHOUT_LOGGING: &[Pubkey] = &[
     Pubkey(b58!("Ed25519SigVerify111111111111111111111111111")),
+    Pubkey(b58!("KeccakSecp256k11111111111111111111111111111")),
 ];
 
 #[derive(Debug)]
@@ -64,7 +65,7 @@ pub struct StructuredInstruction<'a> {
     program_id: PubkeyRef<'a>,
     inner_instructions: RefCell<Vec<Rc<Self>>>,
     parent_instruction: RefCell<Option<Weak<Self>>>,
-    logs: RefCell<Vec<Log<'a>>>,
+    logs: RefCell<Option<Vec<Log<'a>>>>,
 }
 
 impl<'a> StructuredInstruction<'a> {
@@ -77,7 +78,7 @@ impl<'a> StructuredInstruction<'a> {
             accounts: instruction_accounts,
             inner_instructions: inner_instructions,
             parent_instruction: RefCell::new(None),
-            logs: RefCell::new(Vec::new()),
+            logs: RefCell::new(None),
         }
     }
     pub fn program_id(&self) -> PubkeyRef<'a> { self.program_id }
@@ -87,7 +88,7 @@ impl<'a> StructuredInstruction<'a> {
     pub fn stack_height(&self) -> Option<u32> { self.instruction.stack_height() }
     pub fn inner_instructions(&self) -> Ref<Vec<Rc<Self>>> { self.inner_instructions.borrow() }
     pub fn parent_instruction(&self) -> Option<Rc<Self>> { self.parent_instruction.borrow().as_ref().map(|x| x.upgrade().unwrap()) }
-    pub fn logs(&self) -> Ref<Vec<Log<'a>>> { self.logs.borrow() }
+    pub fn logs(&self) -> Ref<Option<Vec<Log<'a>>>> { self.logs.borrow() }
 
     pub fn top_instruction(&self) -> Option<Rc<Self>> {
         if let Some(instruction) = self.parent_instruction() {
@@ -104,44 +105,63 @@ impl<'a> StructuredInstruction<'a> {
 
 pub struct LogStack<'a> {
     stack: Vec<Vec<Log<'a>>>,
+    is_truncated: bool,
 }
 
 impl<'a> LogStack<'a> {
     pub fn new() -> Self {
-        Self { stack: Vec::new() }
+        Self { stack: Vec::new(), is_truncated: false }
     }
 
     pub fn open<I>(&mut self, logs: &mut Peekable<I>, program_id: PubkeyRef)
     where
         I: Iterator<Item = Log<'a>>
     {
-        if PROGRAMS_WITHOUT_LOGGING.iter().any(|x| *x == program_id) {
+        if PROGRAMS_WITHOUT_LOGGING.iter().any(|x| *x == program_id) || self.is_truncated {
             return;
         }
-        if let Some(last) = self.stack.last_mut() {
-            while !logs.peek().unwrap().is_invoke() {
-                last.push(logs.next().unwrap());
+        loop {
+            let log = logs.next().unwrap();
 
+            if log.is_truncated() {
+                self.is_truncated = true;
+                break;
+            } else if log.is_invoke() {
+                self.stack.push(vec![log]);
+                break;
+            } else {
+                self.stack.last_mut().unwrap().push(log);
             }
         }
-        self.stack.push(vec![logs.next().unwrap()]);
     }
 
-    pub fn close<I>(&mut self, logs: &mut Peekable<I>, program_id: PubkeyRef) -> Vec<Log<'a>>
+    pub fn close<I>(&mut self, logs: &mut Peekable<I>, program_id: PubkeyRef) -> Option<Vec<Log<'a>>>
     where
         I: Iterator<Item = Log<'a>>
     {
         if PROGRAMS_WITHOUT_LOGGING.iter().any(|x| *x == program_id) {
-            return Vec::new();
+            return Some(Vec::new());
         }
-        while let Some(log) = logs.next() {
+        if self.is_truncated {
+            return None;
+        }
+
+        loop {
+            let log = logs.next().unwrap();
+
+            if log.is_truncated() {
+                self.is_truncated = true;
+                return None;
+            } else if log.is_invoke() {
+                panic!("Unexpected invoke log");
+            }
+
             let is_success = log.is_success();
             self.stack.last_mut().unwrap().push(log);
             if is_success {
-                break;
+                return self.stack.pop()
             }
         }
-        self.stack.pop().unwrap()
     }
 }
 
