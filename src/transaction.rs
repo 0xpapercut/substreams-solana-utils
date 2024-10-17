@@ -169,3 +169,9 @@ pub fn get_context<'a>(transaction: &'a ConfirmedTransaction) -> Result<Transact
 pub fn get_signature(transaction: &ConfirmedTransaction) -> String {
     bs58::encode(transaction.transaction.as_ref().unwrap().signatures.get(0).unwrap()).into_string()
 }
+
+pub fn get_signers(transaction: &ConfirmedTransaction) -> Vec<String> {
+    let accounts = transaction.resolved_accounts().iter().map(|x| PubkeyRef { 0: x }).collect::<Vec<_>>();
+    let num_required_signatures = transaction.transaction.as_ref().unwrap().message.as_ref().unwrap().header.as_ref().unwrap().num_required_signatures;
+    accounts[..num_required_signatures as usize].iter().map(|x| x.to_string()).collect()
+}
