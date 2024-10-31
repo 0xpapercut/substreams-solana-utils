@@ -60,7 +60,7 @@ const PROGRAMS_WITHOUT_LOGGING: &[Pubkey] = &[
 
 #[derive(Debug)]
 pub struct StructuredInstruction<'a> {
-    instruction: WrappedInstruction<'a>,
+    pub instruction: WrappedInstruction<'a>,
     accounts: Vec<PubkeyRef<'a>>,
     program_id: PubkeyRef<'a>,
     inner_instructions: RefCell<Vec<Rc<Self>>>,

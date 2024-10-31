@@ -31,23 +31,6 @@ impl<'a> TransactionContext<'a> {
         }
     }
 
-    pub fn build_partial(transaction: &'a ConfirmedTransaction) -> Result<Self, &'static str> {
-        let mut context = Self::new(transaction);
-
-        for token_balance in &transaction.meta.as_ref().unwrap().pre_token_balances {
-            let address = context.accounts[token_balance.account_index as usize].clone();
-            let token_account = TokenAccount {
-                address: address.clone(),
-                mint: Pubkey::try_from_string(&token_balance.mint).unwrap(),
-                owner: Pubkey::try_from_string(&token_balance.owner).unwrap(),
-                amount: Some(token_balance.ui_token_amount.as_ref().unwrap().amount.parse::<u64>().expect("Failed to parse u64"))
-            };
-            context.token_accounts.insert(address, token_account);
-        }
-
-        Ok(context)
-    }
-
     pub fn build(transaction: &'a ConfirmedTransaction) -> Result<Self, &'static str> {
         let mut context = Self::new(transaction);
 
@@ -57,20 +40,20 @@ impl<'a> TransactionContext<'a> {
                 address: address.clone(),
                 mint: Pubkey::try_from_string(&token_balance.mint).unwrap(),
                 owner: Pubkey::try_from_string(&token_balance.owner).unwrap(),
-                amount: Some(token_balance.ui_token_amount.as_ref().unwrap().amount.parse::<u64>().expect("Failed to parse u64"))
+                balance: Some(token_balance.ui_token_amount.as_ref().unwrap().amount.parse::<u64>().expect("Failed to parse u64"))
             };
             context.token_accounts.insert(address, token_account);
         }
 
         let instructions = get_flattened_instructions(transaction);
         for instruction in instructions {
-            context.update(&instruction);
+            context.update_accounts(&instruction);
         }
 
         Ok(context)
     }
 
-    fn update(&mut self, instruction: &WrappedInstruction) {
+    pub fn update_accounts(&mut self, instruction: &WrappedInstruction) {
         if self.accounts[instruction.program_id_index() as usize] != TOKEN_PROGRAM_ID {
             return;
         }
@@ -84,55 +67,64 @@ impl<'a> TransactionContext<'a> {
                 let token_account = parse_token_account_from_initialize_account_instruction(instruction, self, Some(owner));
                 self.token_accounts.insert(token_account.address.clone(), token_account);
             }
+            _ => ()
+        }
+    }
+
+    pub fn update_balance(&mut self, instruction: &WrappedInstruction) {
+        if self.accounts[instruction.program_id_index() as usize] != TOKEN_PROGRAM_ID {
+            return;
+        }
+        match TokenInstruction::unpack(&instruction.data()) {
             Ok(TokenInstruction::Transfer { amount }) => {
                 let source_address = self.accounts[instruction.accounts()[0] as usize];
                 let destination_address = self.accounts[instruction.accounts()[1] as usize];
 
                 let source_account = self.token_accounts.get_mut(&source_address).unwrap();
-                source_account.amount = source_account.amount.map(|x| x - amount);
+                source_account.balance = source_account.balance.map(|x| x - amount);
 
                 let destination_account = self.token_accounts.get_mut(&destination_address).unwrap();
-                destination_account.amount = destination_account.amount.map(|x| x + amount);
+                destination_account.balance = destination_account.balance.map(|x| x + amount);
             },
             Ok(TokenInstruction::TransferChecked { amount, decimals: _ }) => {
                 let source_address = self.accounts[instruction.accounts()[0] as usize];
                 let destination_address = self.accounts[instruction.accounts()[2] as usize];
 
                 let source_account = self.token_accounts.get_mut(&source_address).unwrap();
-                source_account.amount = source_account.amount.map(|x| x - amount);
+                source_account.balance = source_account.balance.map(|x| x - amount);
 
                 let destination_account = self.token_accounts.get_mut(&destination_address).unwrap();
-                destination_account.amount = destination_account.amount.map(|x| x + amount);
+                destination_account.balance = destination_account.balance.map(|x| x + amount);
             },
             Ok(TokenInstruction::MintTo { amount }) => {
                 let address = self.accounts[instruction.accounts()[1] as usize];
                 let account = self.token_accounts.get_mut(&address).unwrap();
-                account.amount = account.amount.map(|x| x + amount);
+                account.balance = account.balance.map(|x| x + amount);
             },
             Ok(TokenInstruction::MintToChecked { amount, decimals: _ }) => {
                 let address = self.accounts[instruction.accounts()[1] as usize];
                 let account = self.token_accounts.get_mut(&address).unwrap();
-                account.amount = account.amount.map(|x| x + amount);
+                account.balance = account.balance.map(|x| x + amount);
             },
             Ok(TokenInstruction::Burn { amount }) => {
                 let address = self.accounts[instruction.accounts()[0] as usize];
                 let account = self.token_accounts.get_mut(&address).unwrap();
-                account.amount = account.amount.map(|x| x - amount);
+                account.balance = account.balance.map(|x| x - amount);
             },
             Ok(TokenInstruction::BurnChecked { amount, decimals: _ }) => {
                 let address = self.accounts[instruction.accounts()[0] as usize];
                 let account = self.token_accounts.get_mut(&address).unwrap();
-                account.amount = account.amount.map(|x| x - amount);
+                account.balance = account.balance.map(|x| x - amount);
             },
             Ok(TokenInstruction::SyncNative) => {
                 let address = self.accounts[instruction.accounts()[0] as usize];
                 let account = self.token_accounts.get_mut(&address).unwrap();
-                account.amount = None;
+                account.balance = None;
             },
             Ok(TokenInstruction::CloseAccount) => {
                 let address = self.accounts[instruction.accounts()[0] as usize];
                 let account = self.token_accounts.get_mut(&address).unwrap();
-                account.amount = Some(0);
+                account.balance = Some(0);
             },
             _ => ()
         }
@@ -155,7 +147,7 @@ fn parse_token_account_from_initialize_account_instruction<'a>(instruction: &Wra
         address,
         mint,
         owner,
-        amount: Some(0),
+        balance: Some(0),
     }
 }
 
