@@ -5,5 +5,6 @@ pub struct TokenAccount<'a> {
     pub address: PubkeyRef<'a>,
     pub mint: Pubkey,
     pub owner: Pubkey,
-    pub balance: Option<u64>,
+    pub pre_balance: Option<u64>,
+    pub post_balance: Option<u64>,
 }
