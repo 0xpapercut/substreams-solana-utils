@@ -5,12 +5,14 @@ use substreams_solana::pb::sf::solana::r#type::v1::ConfirmedTransaction;
 use crate::pubkey::{Pubkey, PubkeyRef};
 use crate::instruction::{WrappedInstruction, get_flattened_instructions};
 use crate::spl_token::{TokenAccount, TokenInstruction, TOKEN_PROGRAM_ID, WRAPPED_SOL_MINT};
+use crate::account::AccountBalance;
 
 use anyhow::{anyhow, Error};
 
 /// Context that can provide enough information to process an instruction
 pub struct TransactionContext<'a> {
     pub accounts: Vec<PubkeyRef<'a>>,
+    pub account_balances: Vec<AccountBalance>,
     pub token_accounts: HashMap<PubkeyRef<'a>, TokenAccount<'a>>,
     pub signers: Vec<PubkeyRef<'a>>,
     pub signature: String,
@@ -26,6 +28,7 @@ impl<'a> TransactionContext<'a> {
         Self {
             accounts,
             token_accounts: HashMap::new(),
+            account_balances: Vec::new(),
             signers,
             signature,
         }
@@ -45,6 +48,12 @@ impl<'a> TransactionContext<'a> {
                 post_balance: balance,
             };
             context.token_accounts.insert(address, token_account);
+        }
+
+        let pre_balances = &transaction.meta.as_ref().unwrap().pre_balances;
+        let post_balances = &transaction.meta.as_ref().unwrap().post_balances;
+        for (pre_balance, post_balance) in pre_balances.iter().cloned().zip(post_balances.iter().cloned()) {
+            context.account_balances.push(AccountBalance { pre_balance, post_balance });
         }
 
         let instructions = get_flattened_instructions(transaction);

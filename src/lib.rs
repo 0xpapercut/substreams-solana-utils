@@ -1,5 +1,6 @@
 pub mod transaction;
 pub mod instruction;
+pub mod account;
 pub mod log;
 pub mod pubkey;
 pub mod error;
