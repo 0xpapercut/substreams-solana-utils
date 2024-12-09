@@ -403,6 +403,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "prettyplease"
+version = "0.2.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "479cf940fbbb3426c32c5d5176f62ad57549a0bb84773423ba8be9d089f5faba"
+dependencies = [
+ "proc-macro2",
+ "syn 2.0.79",
+]
+
+[[package]]
 name = "proc-macro-crate"
 version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -450,7 +460,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b82eaa1d779e9a4bc1c3217db8ffbeabaae1dca241bf70183242128d48681cd"
 dependencies = [
  "bytes",
- "prost-derive",
+ "prost-derive 0.11.9",
+]
+
+[[package]]
+name = "prost"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c0fef6c4230e4ccf618a35c59d7ede15dea37de8427500f50aff708806e42ec"
+dependencies = [
+ "bytes",
+ "prost-derive 0.13.4",
 ]
 
 [[package]]
@@ -466,13 +486,33 @@ dependencies = [
  "log",
  "multimap",
  "petgraph",
- "prettyplease",
- "prost",
- "prost-types",
+ "prettyplease 0.1.25",
+ "prost 0.11.9",
+ "prost-types 0.11.9",
  "regex",
  "syn 1.0.109",
  "tempfile",
  "which",
+]
+
+[[package]]
+name = "prost-build"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0f3e5beed80eb580c68e2c600937ac2c4eedabdfd5ef1e5b7ea4f3fba84497b"
+dependencies = [
+ "heck",
+ "itertools",
+ "log",
+ "multimap",
+ "once_cell",
+ "petgraph",
+ "prettyplease 0.2.22",
+ "prost 0.13.4",
+ "prost-types 0.13.4",
+ "regex",
+ "syn 2.0.79",
+ "tempfile",
 ]
 
 [[package]]
@@ -489,12 +529,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "prost-derive"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "157c5a9d7ea5c2ed2d9fb8f495b64759f7816c7eaea54ba3978f0d63000162e3"
+dependencies = [
+ "anyhow",
+ "itertools",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.79",
+]
+
+[[package]]
 name = "prost-types"
 version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "213622a1460818959ac1181aaeb2dc9c7f63df720db7d788b3e24eacd1983e13"
 dependencies = [
- "prost",
+ "prost 0.11.9",
+]
+
+[[package]]
+name = "prost-types"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc2f1e56baa61e93533aebc21af4d2134b70f66275e0fcdf3cbe43d77ff7e8fc"
+dependencies = [
+ "prost 0.13.4",
 ]
 
 [[package]]
@@ -575,10 +637,33 @@ dependencies = [
  "pad",
  "pest",
  "pest_derive",
- "prost",
- "prost-build",
- "prost-types",
- "substreams-macro",
+ "prost 0.11.9",
+ "prost-build 0.11.9",
+ "prost-types 0.11.9",
+ "substreams-macro 0.5.22",
+ "thiserror",
+]
+
+[[package]]
+name = "substreams"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5bb63116b90d4c174114fb237a8916dd995c939874f7576333990a44d78b642a"
+dependencies = [
+ "anyhow",
+ "bigdecimal",
+ "hex",
+ "hex-literal",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "pad",
+ "pest",
+ "pest_derive",
+ "prost 0.13.4",
+ "prost-build 0.13.4",
+ "prost-types 0.13.4",
+ "substreams-macro 0.6.0",
  "thiserror",
 ]
 
@@ -595,46 +680,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "substreams-macro"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f36f36e9da94db29f49daf3ab6b47b529b57c43fc5d58bc35b160aaad1a7233f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+ "thiserror",
+]
+
+[[package]]
 name = "substreams-solana"
-version = "0.13.0"
-source = "git+https://github.com/streamingfast/substreams-solana?branch=master#0d3d087d90a927d17435653b3a7fc4ef6e2758a6"
+version = "0.14.1"
+source = "git+https://github.com/streamingfast/substreams-solana?branch=master#79d7b82aa33d5a1ccb2ce0ddca788443c27f3281"
 dependencies = [
  "anyhow",
  "num_enum",
- "substreams",
+ "substreams 0.6.0",
  "substreams-solana-core",
  "substreams-solana-macro",
 ]
 
 [[package]]
 name = "substreams-solana-core"
-version = "0.13.0"
-source = "git+https://github.com/streamingfast/substreams-solana?branch=master#0d3d087d90a927d17435653b3a7fc4ef6e2758a6"
+version = "0.14.1"
+source = "git+https://github.com/streamingfast/substreams-solana?branch=master#79d7b82aa33d5a1ccb2ce0ddca788443c27f3281"
 dependencies = [
  "bs58 0.4.0",
- "prost",
- "prost-build",
- "prost-types",
+ "prost 0.13.4",
+ "prost-build 0.13.4",
+ "prost-types 0.13.4",
 ]
 
 [[package]]
 name = "substreams-solana-macro"
-version = "0.13.0"
-source = "git+https://github.com/streamingfast/substreams-solana?branch=master#0d3d087d90a927d17435653b3a7fc4ef6e2758a6"
+version = "0.14.1"
+source = "git+https://github.com/streamingfast/substreams-solana?branch=master#79d7b82aa33d5a1ccb2ce0ddca788443c27f3281"
 dependencies = [
  "bs58 0.4.0",
 ]
 
 [[package]]
 name = "substreams-solana-utils"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "base64",
  "borsh",
  "bs58 0.5.1",
  "regex",
- "substreams",
+ "substreams 0.5.22",
  "substreams-solana",
 ]
 
